@@ -131,7 +131,7 @@ foreach ($formations as $f) {
                     <h5><i class="fas fa-user"></i> Mes Informations Personnelles</h5>
                 </div>
                 <div class="card-body">
-                    <form id="updateInfoForm">
+                    <form id="updateInfoForm" enctype="multipart/form-data">
                         <input type="hidden" name="agent_id" value="<?= $agent_id ?>">
                         <div class="row">
                             <div class="col-md-4">
@@ -191,6 +191,30 @@ foreach ($formations as $f) {
                             </div>
                         </div>
 
+                        <!-- Section Photo pour tous les agents -->
+                        <div class="row">
+                            <div class="col-md-8">
+                                <div class="mb-3">
+                                    <label for="photo" class="form-label">Photo de profil</label>
+                                    <input type="file" class="form-control" id="photo" name="photo" accept="image/*">
+                                    <small class="form-text text-muted">Formats acceptés: JPG, PNG, GIF (max 2MB)</small>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="text-center">
+                                    <?php if ($agent_data['photo']): ?>
+                                        <img src="uploads/photos/<?= htmlspecialchars($agent_data['photo']) ?>" 
+                                             class="img-fluid rounded" alt="Photo de profil" style="max-height: 150px;">
+                                    <?php else: ?>
+                                        <div class="border rounded p-3 bg-light">
+                                            <i class="fas fa-user fa-3x text-muted"></i>
+                                            <p class="mt-2 text-muted small">Aucune photo</p>
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Champs spécifiques pour Inspecteur Titulaire -->
                         <div id="inspecteur_fields" style="display: <?= ($agent_data['grade'] ?? '') === 'inspecteur_titulaire' ? 'block' : 'none' ?>;">
                             <hr>
@@ -228,44 +252,16 @@ foreach ($formations as $f) {
                                                 </div>
                                             </div>
                                         </div>
-                                        <div class="row">
-                                            <div class="col-md-12">
-                                                <div class="mb-3">
-                                                    <label for="photo" class="form-label">Photo</label>
-                                                    <input type="file" class="form-control" id="photo" name="photo" accept="image/*">
-                                                    <small class="form-text text-muted">Formats acceptés: JPG, PNG, GIF (max 2MB)</small>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-4">
-                                        <div class="text-center">
-                                            <?php if ($agent_data['photo']): ?>
-                                                <img src="uploads/photos/<?= htmlspecialchars($agent_data['photo']) ?>" 
-                                                     class="img-fluid rounded" alt="Photo de profil" style="max-height: 200px;">
-                                            <?php else: ?>
-                                                <div class="border rounded p-4 bg-light">
-                                                    <i class="fas fa-user fa-4x text-muted"></i>
-                                                    <p class="mt-3 text-muted">Aucune photo</p>
-                                                </div>
-                                            <?php endif; ?>
-                                        </div>
                                     </div>
                                 </div>
-                                <label for="diplome" class="form-label">Diplôme</label>
-                                <input type="file" class="form-control" id="diplome" name="diplome" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png">
-                                <small class="text-muted">Format: PDF, DOC, DOCX, JPG, PNG</small>
-                            </div>
-                            <div class="col-md-4">
-                                <label for="photo_additional" class="form-label">Photo</label>
-                                <input type="file" class="form-control" id="photo_additional" name="photo_additional" accept="image/*">
-                                <small class="text-muted">Formats acceptés: JPG, PNG, GIF (max 2MB)</small>
-                            </div>
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-save"></i> Mettre à jour mes informations
-                        </button>
+                        </div>
+                        
+                        <div class="text-center mt-4">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save"></i> Mettre à jour mes informations
+                            </button>
+                        </div>
                     </form>
-                    </div>
                 </div>
             </div>
         </div>
@@ -464,6 +460,15 @@ foreach ($formations as $f) {
             
             // Activer le bouton correspondant
             const activeBtn = document.getElementById('btn-' + sectionId);
+            if (activeBtn) {
+                activeBtn.classList.remove('btn-outline-primary');
+                activeBtn.classList.add('btn-primary', 'active');
+            }
+        }
+
+        // Gestion des formations
+        document.getElementById('selectFormationsForm').addEventListener('submit', function(e) {
+            e.preventDefault();
             
             const submitBtn = this.querySelector('button[type="submit"]');
             const originalText = submitBtn.innerHTML;
@@ -694,6 +699,12 @@ foreach ($formations as $f) {
         function submitUpdateForm() {
             const form = document.getElementById('updateInfoForm');
             const formData = new FormData(form);
+            
+            // Debug: Vérifier si le fichier photo est inclus
+            console.log('FormData contents:');
+            for (let [key, value] of formData.entries()) {
+                console.log(key, value);
+            }
 
             fetch('ajax/update_agent_info.php', {
                 method: 'POST',
@@ -701,8 +712,12 @@ foreach ($formations as $f) {
             })
             .then(response => response.json())
             .then(data => {
+                console.log('Response:', data);
                 if (data.success) {
                     alert('Informations mises à jour avec succès!');
+                    if (data.debug) {
+                        console.log('Debug info:', data.debug);
+                    }
                     location.reload();
                 } else {
                     alert('Erreur: ' + data.message);
