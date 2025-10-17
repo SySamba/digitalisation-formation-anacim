@@ -30,7 +30,7 @@ try {
     $agent_id = $_SESSION['agent_id'];
     
     // Vérifier que le diplôme appartient à l'agent connecté
-    $query = "SELECT * FROM diplomes_academiques WHERE id = ? AND agent_id = ?";
+    $query = "SELECT * FROM diplomes WHERE id = ? AND agent_id = ?";
     $stmt = $db->prepare($query);
     $stmt->execute([$diplome_id, $agent_id]);
     $diplome = $stmt->fetch();
@@ -48,12 +48,11 @@ try {
     }
 
     // Supprimer l'enregistrement
-    $delete_query = "DELETE FROM diplomes_academiques WHERE id = ? AND agent_id = ?";
+    $delete_query = "DELETE FROM diplomes WHERE id = ? AND agent_id = ?";
     $delete_stmt = $db->prepare($delete_query);
     
     if ($delete_stmt->execute([$diplome_id, $agent_id])) {
-        logActivity('DELETE_DIPLOME_SELF', "Agent a supprimé un diplôme: {$diplome['type_diplome']}", $agent_id);
-        echo json_encode(['success' => true, 'message' => 'Diplôme supprimé avec succès.']);
+        echo json_encode(['success' => true, 'message' => 'Document supprimé avec succès.']);
     } else {
         throw new Exception('Erreur lors de la suppression.');
     }

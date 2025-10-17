@@ -1,0 +1,33 @@
+# Configuration files - contains sensitive database credentials
+config/
+config/database.php
+
+# Database configuration file (if in root)
+database.php
+
+# Log files
+logs/
+*.log
+
+# Uploaded files (optional - uncomment if you don't want to track uploads)
+# uploads/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp

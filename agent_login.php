@@ -137,7 +137,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         
                         <div class="text-center">
                             <a href="register.php" class="text-decoration-none">
-                                <i class="fas fa-user-plus"></i> Première inscription
+                                <i class="fas fa-user-plus"></i>  Inscription
                             </a>
                             <br><br>
                             <a href="admin.php" class="text-decoration-none">

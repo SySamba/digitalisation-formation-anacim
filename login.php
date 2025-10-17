@@ -72,9 +72,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         
         .logo-login {
-            max-height: 60px;
-            margin-bottom: 1rem;
+            max-height: 40px;
+            margin-right: 10px;
+            background-color: white;
+            padding: 5px;
+            border-radius: 5px;
         }
+        
         
         .form-control:focus {
             border-color: var(--primary-color);

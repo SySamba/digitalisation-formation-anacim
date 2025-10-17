@@ -55,6 +55,9 @@ foreach ($formations as $f) {
         .logo-header {
             max-height: 40px;
             margin-right: 10px;
+            background-color: white;
+            padding: 5px;
+            border-radius: 5px;
         }
         
         .formation-category {
@@ -88,7 +91,7 @@ foreach ($formations as $f) {
                 <span>Inscription Agent</span>
             </a>
             <div class="navbar-nav ms-auto">
-                <a class="nav-link" href="agent_login.php"><i class="fas fa-user"></i> Mon Profil</a>
+                <a class="nav-link" href="agent_login.php"><i class="fas fa-user"></i>Connexion</a>
                 <a class="nav-link" href="admin.php"><i class="fas fa-cog"></i> Administration</a>
             </div>
         </div>

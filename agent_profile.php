@@ -273,30 +273,51 @@ foreach ($formations as $f) {
                     <h5><i class="fas fa-graduation-cap"></i> Mes Diplômes et Attestations</h5>
                 </div>
                 <div class="card-body">
-                    <form id="diplomesForm" method="POST" enctype="multipart/form-data">
+                    <form id="multipleDocumentsForm" method="POST" enctype="multipart/form-data">
                         <input type="hidden" name="agent_id" value="<?= $agent_id ?>">
                         
-                        <div class="row mb-3">
-                            <div class="col-md-4">
-                                <label for="cv" class="form-label">CV</label>
-                                <input type="file" class="form-control" id="cv" name="cv" accept=".pdf,.doc,.docx">
-                                <small class="text-muted">Format: PDF, DOC, DOCX</small>
-                            </div>
-                            <div class="col-md-4">
-                                <label for="diplome" class="form-label">Diplôme</label>
-                                <input type="file" class="form-control" id="diplome" name="diplome" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png">
-                                <small class="text-muted">Format: PDF, DOC, DOCX, JPG, PNG</small>
-                            </div>
-                            <div class="col-md-4">
-                                <label for="attestation" class="form-label">Attestation</label>
-                                <input type="file" class="form-control" id="attestation" name="attestation" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png">
-                                <small class="text-muted">Format: PDF, DOC, DOCX, JPG, PNG</small>
+                        <div id="documentsContainer">
+                            <!-- Premier document par défaut -->
+                            <div class="document-item border rounded p-3 mb-3" data-index="0">
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <h6 class="mb-0">Document 1</h6>
+                                    <span class="remove-document text-danger" onclick="removeDocument(0)" style="display: none; cursor: pointer;">
+                                        <i class="fas fa-times"></i>
+                                    </span>
+                                </div>
+                                
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <label class="form-label">Type de document *</label>
+                                        <select class="form-select" name="type_diplome[]" onchange="toggleTitleField(this, 0)" required>
+                                            <option value="">Sélectionner...</option>
+                                            <option value="cv">CV</option>
+                                            <option value="diplome">Diplôme</option>
+                                            <option value="attestation">Attestation</option>
+                                            <option value="certificat">Certificat</option>
+                                            <option value="autre">Autre</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-4 title-field" style="display: none;">
+                                        <label class="form-label">Titre du document *</label>
+                                        <input type="text" class="form-control" name="titre[]" placeholder="Ex: Diplôme d'ingénieur">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">Fichier *</label>
+                                        <input type="file" class="form-control" name="documents[]" 
+                                               accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" required>
+                                        <small class="text-muted">PDF, DOC, DOCX, JPG, PNG (max 5MB)</small>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         
-                        <div class="text-center">
-                            <button type="submit" class="btn btn-primary">
-                                <i class="fas fa-save"></i> Enregistrer mes documents
+                        <div class="text-center mt-3">
+                            <button type="button" class="btn btn-outline-primary" onclick="addDocument()">
+                                <i class="fas fa-plus"></i> Ajouter un autre document
+                            </button>
+                            <button type="submit" class="btn btn-primary ms-2">
+                                <i class="fas fa-save"></i> Enregistrer tous les documents
                             </button>
                         </div>
                     </form>
@@ -310,24 +331,34 @@ foreach ($formations as $f) {
                                 <thead>
                                     <tr>
                                         <th>Type</th>
-                                        <th>Fichier</th>
+                                        <th>Document</th>
                                         <th>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     <?php foreach ($diplomes as $diplome): ?>
                                         <tr>
-                                            <td><?= htmlspecialchars($diplome['type_diplome']) ?></td>
+                                            <td>
+                                                <span class="badge bg-secondary">
+                                                    <?= ucfirst(htmlspecialchars($diplome['type_diplome'])) ?>
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <?php if (!empty($diplome['titre'])): ?>
+                                                    <strong><?= htmlspecialchars($diplome['titre']) ?></strong>
+                                                <?php else: ?>
+                                                    <strong><?= ucfirst(htmlspecialchars($diplome['type_diplome'])) ?></strong>
+                                                <?php endif; ?>
+                                                <br><small class="text-muted">Ajouté le <?= date('d/m/Y', strtotime($diplome['created_at'])) ?></small>
+                                            </td>
                                             <td>
                                                 <?php if ($diplome['fichier_path']): ?>
                                                     <a href="uploads/diplomes/<?= htmlspecialchars($diplome['fichier_path']) ?>" 
                                                        target="_blank" class="btn btn-sm btn-outline-primary">
-                                                        <i class="fas fa-download"></i> Voir
+                                                        <i class="fas fa-eye"></i> Voir
                                                     </a>
                                                 <?php endif; ?>
-                                            </td>
-                                            <td>
-                                                <button class="btn btn-sm btn-outline-danger" 
+                                                <button class="btn btn-sm btn-outline-danger ms-1" 
                                                         onclick="deleteDiplome(<?= $diplome['id'] ?>)">
                                                     <i class="fas fa-trash"></i>
                                                 </button>
@@ -388,11 +419,20 @@ foreach ($formations as $f) {
                                                 <div class="row">
                                                     <div class="col-md-3">
                                                         <label class="form-label">Centre de formation</label>
-                                                        <select class="form-select formation-required" name="centre_formation[<?= $formation['id'] ?>]">
+                                                        <select class="form-select formation-required" name="centre_formation[<?= $formation['id'] ?>]" onchange="toggleCustomCenter(this, <?= $formation['id'] ?>)">
                                                             <option value="">Sélectionner...</option>
-                                                            <option value="interne" <?= $is_completed && isset($formations_effectuees[array_search($formation['id'], $formations_effectuees_ids)]['centre_formation']) && $formations_effectuees[array_search($formation['id'], $formations_effectuees_ids)]['centre_formation'] == 'interne' ? 'selected' : '' ?>>Formation Interne</option>
-                                                            <option value="externe" <?= $is_completed && isset($formations_effectuees[array_search($formation['id'], $formations_effectuees_ids)]['centre_formation']) && $formations_effectuees[array_search($formation['id'], $formations_effectuees_ids)]['centre_formation'] == 'externe' ? 'selected' : '' ?>>Formation Externe</option>
+                                                            <option value="ENAC" <?= $is_completed && isset($formations_effectuees[array_search($formation['id'], $formations_effectuees_ids)]['centre_formation']) && $formations_effectuees[array_search($formation['id'], $formations_effectuees_ids)]['centre_formation'] == 'ENAC' ? 'selected' : '' ?>>ENAC</option>
+                                                            <option value="ERNAM" <?= $is_completed && isset($formations_effectuees[array_search($formation['id'], $formations_effectuees_ids)]['centre_formation']) && $formations_effectuees[array_search($formation['id'], $formations_effectuees_ids)]['centre_formation'] == 'ERNAM' ? 'selected' : '' ?>>ERNAM</option>
+                                                            <option value="ITAerea" <?= $is_completed && isset($formations_effectuees[array_search($formation['id'], $formations_effectuees_ids)]['centre_formation']) && $formations_effectuees[array_search($formation['id'], $formations_effectuees_ids)]['centre_formation'] == 'ITAerea' ? 'selected' : '' ?>>ITAerea</option>
+                                                            <option value="IFURTA" <?= $is_completed && isset($formations_effectuees[array_search($formation['id'], $formations_effectuees_ids)]['centre_formation']) && $formations_effectuees[array_search($formation['id'], $formations_effectuees_ids)]['centre_formation'] == 'IFURTA' ? 'selected' : '' ?>>IFURTA</option>
+                                                            <option value="EPT" <?= $is_completed && isset($formations_effectuees[array_search($formation['id'], $formations_effectuees_ids)]['centre_formation']) && $formations_effectuees[array_search($formation['id'], $formations_effectuees_ids)]['centre_formation'] == 'EPT' ? 'selected' : '' ?>>EPT</option>
+                                                            <option value="IFNPC" <?= $is_completed && isset($formations_effectuees[array_search($formation['id'], $formations_effectuees_ids)]['centre_formation']) && $formations_effectuees[array_search($formation['id'], $formations_effectuees_ids)]['centre_formation'] == 'IFNPC' ? 'selected' : '' ?>>IFNPC</option>
+                                                            <option value="EMAERO services" <?= $is_completed && isset($formations_effectuees[array_search($formation['id'], $formations_effectuees_ids)]['centre_formation']) && $formations_effectuees[array_search($formation['id'], $formations_effectuees_ids)]['centre_formation'] == 'EMAERO services' ? 'selected' : '' ?>>EMAERO services</option>
+                                                            <option value="autres" <?= $is_completed && isset($formations_effectuees[array_search($formation['id'], $formations_effectuees_ids)]['centre_formation']) && !in_array($formations_effectuees[array_search($formation['id'], $formations_effectuees_ids)]['centre_formation'], ['ENAC', 'ERNAM', 'ITAerea', 'IFURTA', 'EPT', 'IFNPC', 'EMAERO services']) ? 'selected' : '' ?>>Autres</option>
                                                         </select>
+                                                        <input type="text" class="form-control mt-2 custom-center" name="centre_formation_custom[<?= $formation['id'] ?>]" 
+                                                               placeholder="Nom de l'école" style="display: none;"
+                                                               value="<?= $is_completed && isset($formations_effectuees[array_search($formation['id'], $formations_effectuees_ids)]['centre_formation']) && !in_array($formations_effectuees[array_search($formation['id'], $formations_effectuees_ids)]['centre_formation'], ['ENAC', 'ERNAM', 'ITAerea', 'IFURTA', 'EPT', 'IFNPC', 'EMAERO services']) ? htmlspecialchars($formations_effectuees[array_search($formation['id'], $formations_effectuees_ids)]['centre_formation']) : '' ?>">
                                                     </div>
                                                     <div class="col-md-3">
                                                         <label class="form-label">Date de début</label>
@@ -466,44 +506,57 @@ foreach ($formations as $f) {
             }
         }
 
+        // Fonction pour afficher/masquer le champ centre personnalisé
+        function toggleCustomCenter(selectElement, formationId) {
+            const customInput = document.querySelector(`input[name="centre_formation_custom[${formationId}]"]`);
+            if (selectElement.value === 'autres') {
+                customInput.style.display = 'block';
+                customInput.required = true;
+            } else {
+                customInput.style.display = 'none';
+                customInput.required = false;
+                customInput.value = '';
+            }
+        }
+
         // Gestion des formations
         document.getElementById('selectFormationsForm').addEventListener('submit', function(e) {
             e.preventDefault();
             
-            const submitBtn = this.querySelector('button[type="submit"]');
-            const originalText = submitBtn.innerHTML;
+            const checkedFormations = document.querySelectorAll('input[name="formations_effectuees[]"]:checked');
             
-            // Validation côté client
-            const checkedFormations = this.querySelectorAll('input[name="formations_effectuees[]"]:checked');
+            if (checkedFormations.length === 0) {
+                alert('Veuillez sélectionner au moins une formation.');
+                return;
+            }
             
-            // Vérifier que pour chaque formation cochée, les champs requis sont remplis
-            let validationError = false;
-            let errorMessage = '';
+            // Vérifier que tous les champs requis sont remplis pour les formations sélectionnées
+            let allFieldsValid = true;
             
             checkedFormations.forEach(checkbox => {
                 const formationId = checkbox.value;
-                const centre = this.querySelector(`select[name="centre_formation[${formationId}]"]`);
-                const dateDebut = this.querySelector(`input[name="date_debut[${formationId}]"]`);
-                const dateFin = this.querySelector(`input[name="date_fin[${formationId}]"]`);
+                const centreSelect = document.querySelector(`select[name="centre_formation[${formationId}]"]`);
+                const centreCustom = document.querySelector(`input[name="centre_formation_custom[${formationId}]"]`);
+                const dateDebut = document.querySelector(`input[name="date_debut[${formationId}]"]`);
+                const dateFin = document.querySelector(`input[name="date_fin[${formationId}]"]`);
                 
-                if (!centre.value) {
-                    validationError = true;
-                    errorMessage = 'Veuillez sélectionner le centre de formation pour toutes les formations cochées';
+                if (!centreSelect.value || !dateDebut.value || !dateFin.value) {
+                    allFieldsValid = false;
                 }
-                if (!dateDebut.value) {
-                    validationError = true;
-                    errorMessage = 'Veuillez remplir la date de début pour toutes les formations cochées';
-                }
-                if (!dateFin.value) {
-                    validationError = true;
-                    errorMessage = 'Veuillez remplir la date de fin pour toutes les formations cochées';
+                
+                // Vérifier le champ personnalisé si "autres" est sélectionné
+                if (centreSelect.value === 'autres' && !centreCustom.value.trim()) {
+                    allFieldsValid = false;
                 }
             });
             
-            if (validationError) {
-                alert(errorMessage);
+            if (!allFieldsValid) {
+                alert('Veuillez remplir tous les champs (centre, dates) pour les formations sélectionnées.');
                 return;
             }
+            
+            const submitBtn = this.querySelector('button[type="submit"]');
+            const originalText = submitBtn.innerHTML;
             
             // Désactiver le bouton et changer le texte
             submitBtn.disabled = true;
@@ -547,20 +600,139 @@ foreach ($formations as $f) {
                 }
             })
             .catch(error => {
-                console.error('Error:', error);
+                console.error('Erreur:', error);
                 submitBtn.innerHTML = originalText;
                 submitBtn.disabled = false;
                 submitBtn.className = 'btn btn-primary';
-                alert('Une erreur est survenue: ' + error.message);
+                alert('Erreur lors de l\'enregistrement: ' + error.message);
             });
         });
 
-        // Gestion des diplômes
-        document.getElementById('diplomesForm').addEventListener('submit', function(e) {
+        // Variables pour la gestion des documents multiples
+        let documentIndex = 1;
+
+        function addDocument() {
+            const container = document.getElementById('documentsContainer');
+            const newIndex = documentIndex++;
+            
+            const documentDiv = document.createElement('div');
+            documentDiv.className = 'document-item border rounded p-3 mb-3';
+            documentDiv.setAttribute('data-index', newIndex);
+            
+            documentDiv.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h6 class="mb-0">Document ${newIndex + 1}</h6>
+                    <span class="remove-document text-danger" onclick="removeDocument(${newIndex})" style="cursor: pointer;">
+                        <i class="fas fa-times"></i>
+                    </span>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-4">
+                        <label class="form-label">Type de document *</label>
+                        <select class="form-select" name="type_diplome[]" onchange="toggleTitleField(this, ${newIndex})" required>
+                            <option value="">Sélectionner...</option>
+                            <option value="cv">CV</option>
+                            <option value="diplome">Diplôme</option>
+                            <option value="attestation">Attestation</option>
+                            <option value="certificat">Certificat</option>
+                            <option value="autre">Autre</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4 title-field" style="display: none;">
+                        <label class="form-label">Titre du document *</label>
+                        <input type="text" class="form-control" name="titre[]" placeholder="Ex: Diplôme d'ingénieur">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Fichier *</label>
+                        <input type="file" class="form-control" name="documents[]" 
+                               accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" required>
+                        <small class="text-muted">PDF, DOC, DOCX, JPG, PNG (max 5MB)</small>
+                    </div>
+                </div>
+            `;
+            
+            container.appendChild(documentDiv);
+            updateRemoveButtons();
+        }
+
+        function removeDocument(index) {
+            const documentDiv = document.querySelector(`[data-index="${index}"]`);
+            if (documentDiv) {
+                documentDiv.remove();
+                updateRemoveButtons();
+                updateDocumentNumbers();
+            }
+        }
+
+        function updateRemoveButtons() {
+            const documents = document.querySelectorAll('.document-item');
+            documents.forEach((doc, index) => {
+                const removeBtn = doc.querySelector('.remove-document');
+                if (documents.length > 1) {
+                    removeBtn.style.display = 'inline';
+                } else {
+                    removeBtn.style.display = 'none';
+                }
+            });
+        }
+
+        function updateDocumentNumbers() {
+            const documents = document.querySelectorAll('.document-item');
+            documents.forEach((doc, index) => {
+                const title = doc.querySelector('h6');
+                title.textContent = `Document ${index + 1}`;
+            });
+        }
+
+        // Fonction pour afficher/masquer le champ titre
+        function toggleTitleField(selectElement, index) {
+            const documentDiv = selectElement.closest('.document-item');
+            const titleField = documentDiv.querySelector('.title-field');
+            const titleInput = titleField.querySelector('input[name="titre[]"]');
+            
+            if (selectElement.value === 'diplome' || selectElement.value === 'attestation') {
+                titleField.style.display = 'block';
+                titleInput.required = true;
+            } else {
+                titleField.style.display = 'none';
+                titleInput.required = false;
+                titleInput.value = '';
+            }
+        }
+
+        // Gestion des diplômes multiples
+        document.getElementById('multipleDocumentsForm').addEventListener('submit', function(e) {
             e.preventDefault();
             
             const submitBtn = this.querySelector('button[type="submit"]');
             const originalText = submitBtn.innerHTML;
+            
+            // Validation
+            const documents = this.querySelectorAll('input[name="documents[]"]');
+            const types = this.querySelectorAll('select[name="type_diplome[]"]');
+            const titres = this.querySelectorAll('input[name="titre[]"]');
+            
+            let hasFiles = false;
+            for (let i = 0; i < documents.length; i++) {
+                if (documents[i].files.length > 0) {
+                    hasFiles = true;
+                    if (!types[i].value) {
+                        alert('Veuillez sélectionner un type pour tous les documents sélectionnés.');
+                        return;
+                    }
+                    // Vérifier le titre pour diplômes et attestations
+                    if ((types[i].value === 'diplome' || types[i].value === 'attestation') && !titres[i].value.trim()) {
+                        alert('Veuillez saisir un titre pour tous les diplômes et attestations.');
+                        return;
+                    }
+                }
+            }
+            
+            if (!hasFiles) {
+                alert('Veuillez sélectionner au moins un fichier à uploader.');
+                return;
+            }
             
             // Désactiver le bouton et changer le texte
             submitBtn.disabled = true;
@@ -576,14 +748,15 @@ foreach ($formations as $f) {
             .then(data => {
                 if (data.success) {
                     submitBtn.innerHTML = '<i class="fas fa-check"></i> Enregistré !';
-                    submitBtn.className = 'btn btn-success';
-                    alert('Documents enregistrés avec succès !');
+                    submitBtn.className = 'btn btn-success ms-2';
+                    alert(`${data.count} document(s) enregistré(s) avec succès !`);
                     setTimeout(() => {
                         location.reload();
                     }, 1000);
                 } else {
                     submitBtn.innerHTML = originalText;
                     submitBtn.disabled = false;
+                    submitBtn.className = 'btn btn-primary ms-2';
                     alert('Erreur: ' + data.message);
                 }
             })
@@ -591,6 +764,7 @@ foreach ($formations as $f) {
                 console.error('Error:', error);
                 submitBtn.innerHTML = originalText;
                 submitBtn.disabled = false;
+                submitBtn.className = 'btn btn-primary ms-2';
                 alert('Une erreur est survenue: ' + error.message);
             });
         });

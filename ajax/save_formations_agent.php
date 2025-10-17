@@ -4,10 +4,8 @@ require_once '../config/database.php';
 
 header('Content-Type: application/json');
 
-// Debug: Log all received data
-error_log("POST data: " . print_r($_POST, true));
-error_log("FILES data: " . print_r($_FILES, true));
-error_log("Session data: " . print_r($_SESSION, true));
+// Clean output buffer to prevent invalid JSON
+ob_clean();
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     echo json_encode(['success' => false, 'message' => 'Méthode non autorisée']);
@@ -52,9 +50,17 @@ try {
     
     // Insérer les nouvelles formations
     foreach ($formations_effectuees as $formation_id) {
-        $centre = $centres_formation[$formation_id] ?? '';
-        $date_debut = $dates_debut[$formation_id] ?? null;
-        $date_fin = $dates_fin[$formation_id] ?? null;
+        // Récupérer les données du formulaire pour cette formation
+        $centre_formation = $centres_formation[$formation_id] ?? '';
+        $centre_formation_custom = $_POST['centre_formation_custom'][$formation_id] ?? '';
+        
+        // Si "autres" est sélectionné, utiliser le nom personnalisé
+        if ($centre_formation === 'autres' && !empty($centre_formation_custom)) {
+            $centre_formation = $centre_formation_custom;
+        }
+        
+        $date_debut = $dates_debut[$formation_id] ?? '';
+        $date_fin = $dates_fin[$formation_id] ?? '';
         
         // Validation des champs obligatoires
         if (empty($date_debut) || empty($date_fin)) {
@@ -102,7 +108,7 @@ try {
         $stmt->execute([
             $agent_id,
             $formation_id,
-            $centre,
+            $centre_formation,
             $date_debut,
             $date_fin,
             $fichier_joint,

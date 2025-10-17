@@ -127,7 +127,7 @@ $fichiers = $agent->getFichiersAgent($_GET['id']);
                 </div>
                 <div class="col-md-4">
                     <?php if ($agent_data['photo']): ?>
-                        <img src="<?= htmlspecialchars($agent_data['photo']) ?>" 
+                        <img src="uploads/photos/<?= htmlspecialchars($agent_data['photo']) ?>" 
                              class="img-fluid rounded" alt="Photo de l'agent" style="max-height: 200px;">
                     <?php else: ?>
                         <div class="text-center p-4 border rounded bg-light">
@@ -151,6 +151,7 @@ $fichiers = $agent->getFichiersAgent($_GET['id']);
                         <thead>
                             <tr>
                                 <th>Type</th>
+                                <th>Titre</th>
                                 <th>Fichier</th>
                                 <th>Date d'ajout</th>
                                 <th>Actions</th>
@@ -163,6 +164,13 @@ $fichiers = $agent->getFichiersAgent($_GET['id']);
                                         <span class="badge bg-primary">
                                             <?= strtoupper(htmlspecialchars($diplome['type_diplome'])) ?>
                                         </span>
+                                    </td>
+                                    <td>
+                                        <?php if (!empty($diplome['titre'])): ?>
+                                            <strong><?= htmlspecialchars($diplome['titre']) ?></strong>
+                                        <?php else: ?>
+                                            <span class="text-muted">-</span>
+                                        <?php endif; ?>
                                     </td>
                                     <td>
                                         <?php if ($diplome['fichier_path']): ?>
@@ -319,6 +327,7 @@ $fichiers = $agent->getFichiersAgent($_GET['id']);
                                         <tr>
                                             <th>Formation</th>
                                             <th>Statut</th>
+                                            <th>Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -328,6 +337,11 @@ $fichiers = $agent->getFichiersAgent($_GET['id']);
                                                 <td>
                                                     <span class="badge bg-warning">
                                                         <i class="fas fa-exclamation-triangle"></i> Non effectuée
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    <span class="text-muted">
+                                                        <i class="fas fa-info-circle"></i> Formation non effectuée
                                                     </span>
                                                 </td>
                                             </tr>
@@ -417,119 +431,484 @@ $fichiers = $agent->getFichiersAgent($_GET['id']);
 
         <!-- Planning Prévu -->
         <div class="agent-section" id="planning" style="display: none;">
-            <h5>Planning des Formations</h5>
-            
             <?php 
-            // Récupérer les formations techniques qui nécessitent un renouvellement
-            $formations_techniques_renouvellement = [];
-            foreach ($formations_effectuees as $formation) {
-                if (strpos($formation['code'], 'SUR-FTS') !== false) {
-                    $validite_annees = intval($formation['validite_mois'] ?? 60) / 12;
-                    $prochaine_echeance = date('Y-m-d', strtotime($formation['date_fin'] . ' + ' . $validite_annees . ' years'));
-                    $jours_restants = (strtotime($prochaine_echeance) - time()) / (60*60*24);
-                    
-                    if ($jours_restants <= 730) { // 2 ans avant expiration
-                        $formations_techniques_renouvellement[] = [
-                            'formation' => $formation,
-                            'prochaine_echeance' => $prochaine_echeance,
-                            'jours_restants' => $jours_restants,
-                            'type' => 'renouvellement'
-                        ];
-                    }
+            // Récupérer les données de planning pour cet agent spécifique
+            $agent_id = $_GET['id'];
+            
+            // Récupérer les formations disponibles
+            $stmt_formations = $pdo->prepare("SELECT id, code, intitule, categorie, periodicite_mois FROM formations ORDER BY categorie, intitule");
+            $stmt_formations->execute();
+            $formations = $stmt_formations->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Récupérer les centres de formation
+            try {
+                $stmt_centres = $pdo->prepare("SELECT * FROM centres_formation ORDER BY nom");
+                $stmt_centres->execute();
+                $centres = $stmt_centres->fetchAll();
+            } catch (PDOException $e) {
+                $centres = [
+                    ['id' => 1, 'nom' => 'ENAC'],
+                    ['id' => 2, 'nom' => 'ERNAM'],
+                    ['id' => 3, 'nom' => 'ITAerea'],
+                    ['id' => 4, 'nom' => 'IFURTA'],
+                    ['id' => 5, 'nom' => 'EPT'],
+                    ['id' => 6, 'nom' => 'IFNPC'],
+                    ['id' => 7, 'nom' => 'EMAERO services']
+                ];
+            }
+            
+            // Récupérer les besoins de formation pour cet agent
+            $stmt_besoins = $pdo->prepare("
+                SELECT 
+                    a.id as agent_id,
+                    a.matricule,
+                    a.prenom,
+                    a.nom,
+                    f.id as formation_id,
+                    f.code,
+                    f.intitule,
+                    f.periodicite_mois,
+                    'renouveler' as type_besoin,
+                    fa.date_fin as derniere_formation,
+                    DATE_ADD(fa.date_fin, INTERVAL f.periodicite_mois MONTH) as echeance_prevue,
+                    DATEDIFF(DATE_ADD(fa.date_fin, INTERVAL f.periodicite_mois MONTH), CURDATE()) as jours_restants,
+                    (SELECT COUNT(*) FROM planning_formations pf 
+                     WHERE pf.agent_id = a.id AND pf.formation_id = f.id 
+                     AND pf.statut IN ('planifie', 'confirme')) as est_planifie
+                FROM agents a
+                JOIN formations_agents fa ON a.id = fa.agent_id
+                JOIN formations f ON fa.formation_id = f.id
+                WHERE a.id = ? 
+                AND f.periodicite_mois IS NOT NULL
+                AND DATE_ADD(fa.date_fin, INTERVAL f.periodicite_mois MONTH) <= DATE_ADD(CURDATE(), INTERVAL 12 MONTH)
+                AND fa.id = (
+                    SELECT MAX(fa2.id) 
+                    FROM formations_agents fa2 
+                    WHERE fa2.agent_id = a.id AND fa2.formation_id = f.id
+                )
+                
+                UNION ALL
+                
+                SELECT 
+                    a.id as agent_id,
+                    a.matricule,
+                    a.prenom,
+                    a.nom,
+                    f.id as formation_id,
+                    f.code,
+                    f.intitule,
+                    f.periodicite_mois,
+                    'non_effectuee' as type_besoin,
+                    NULL as derniere_formation,
+                    DATE_ADD(CURDATE(), INTERVAL 3 MONTH) as echeance_prevue,
+                    90 as jours_restants,
+                    (SELECT COUNT(*) FROM planning_formations pf 
+                     WHERE pf.agent_id = a.id AND pf.formation_id = f.id 
+                     AND pf.statut IN ('planifie', 'confirme')) as est_planifie
+                FROM agents a
+                CROSS JOIN formations f
+                WHERE a.id = ? 
+                AND NOT EXISTS (
+                    SELECT 1 FROM formations_agents fa 
+                    WHERE fa.agent_id = a.id AND fa.formation_id = f.id
+                )
+                -- Inclure toutes les formations non effectuées, même si planifiées
+                -- pour permettre l'affichage du statut de planification
+                
+                ORDER BY jours_restants ASC, type_besoin DESC
+            ");
+            $stmt_besoins->execute([$agent_id, $agent_id]);
+            $besoins_formation = $stmt_besoins->fetchAll();
+            
+            // Debug: Afficher le nombre de besoins trouvés
+            error_log("Besoins formation trouvés pour agent $agent_id: " . count($besoins_formation));
+            if (!empty($besoins_formation)) {
+                foreach ($besoins_formation as $besoin) {
+                    error_log("Besoin: " . $besoin['code'] . " - " . $besoin['type_besoin']);
                 }
             }
             
-            // Récupérer les formations non effectuées prioritaires
-            $formations_prioritaires = array_slice($formations_non_effectuees, 0, 5);
+            // Fonction pour déterminer la catégorie de formation
+            function getCategorieFormationAgent($code) {
+                if (empty($code)) {
+                    return 'AUTRE';
+                }
+                if (strpos($code, 'SUR-FAM') !== false) {
+                    return 'FAMILIARISATION (SUR-FAM)';
+                } elseif (strpos($code, 'SUR-INI') !== false) {
+                    return 'FORMATION INITIALE (SUR-INI)';
+                } elseif (strpos($code, 'SUR-FCE') !== false) {
+                    return 'FORMATION EN COURS D\'EMPLOI (SUR-FCE)';
+                } elseif (strpos($code, 'SUR-FTS') !== false) {
+                    return 'FORMATION TECHNIQUE/SPÉCIALISÉE (SUR-FTS)';
+                }
+                return 'AUTRE';
+            }
             ?>
             
-            <div class="row">
-                <div class="col-md-6">
-                    <h6 class="text-primary">Formations à Renouveler (Techniques)</h6>
-                    <?php if (empty($formations_techniques_renouvellement)): ?>
-                        <div class="alert alert-success">
-                            <i class="fas fa-check-circle"></i> Aucun renouvellement prévu dans les 2 prochaines années.
-                        </div>
+            <!-- Navigation buttons for planning sections -->
+            <div class="d-flex flex-wrap gap-2 mb-4 justify-content-center">
+                <button class="btn btn-primary active" onclick="showPlanningSection('besoins-agent')" id="btn-besoins-agent">
+                    <i class="fas fa-exclamation-triangle"></i> Besoins de Formation
+                </button>
+                <button class="btn btn-outline-primary" onclick="showPlanningSection('planifier-agent')" id="btn-planifier-agent">
+                    <i class="fas fa-calendar-plus"></i> Planifier Formation
+                </button>
+                <button class="btn btn-outline-primary" onclick="showPlanningSection('planning-agent')" id="btn-planning-agent">
+                    <i class="fas fa-calendar"></i> Planning Existant
+                </button>
+            </div>
+            
+            <!-- Section Besoins de Formation pour cet agent -->
+            <div class="planning-subsection" id="besoins-agent" style="display: block;">
+                <h5><i class="fas fa-exclamation-triangle"></i> Besoins de Formation</h5>
+                
+                <?php 
+            // Debug: Vérifier s'il y a des formations dans la base
+            $stmt_debug = $pdo->prepare("SELECT COUNT(*) as total FROM formations");
+            $stmt_debug->execute();
+            $total_formations = $stmt_debug->fetch()['total'];
+            
+            // Debug: Vérifier s'il y a des formations_agents pour cet agent
+            $stmt_debug2 = $pdo->prepare("SELECT COUNT(*) as total FROM formations_agents WHERE agent_id = ?");
+            $stmt_debug2->execute([$agent_id]);
+            $total_formations_agent = $stmt_debug2->fetch()['total'];
+            ?>
+            
+            <!-- Debug info (temporaire) -->
+            <div class="alert alert-warning">
+                <strong>Debug:</strong> 
+                Total formations: <?= $total_formations ?> | 
+                Formations de cet agent: <?= $total_formations_agent ?> | 
+                Besoins trouvés: <?= count($besoins_formation) ?>
+            </div>
+            
+            <?php if (empty($besoins_formation)): ?>
+                <div class="alert alert-info text-center">
+                    <i class="fas fa-info-circle"></i> 
+                    <?php if ($total_formations == 0): ?>
+                        Aucune formation disponible dans le système.
+                    <?php elseif ($total_formations_agent == 0): ?>
+                        Cet agent n'a effectué aucune formation. Toutes les formations sont des besoins potentiels.
+                        <br><small>Vérifiez la requête SQL pour les formations non effectuées.</small>
                     <?php else: ?>
-                        <div class="table-responsive">
-                            <table class="table table-sm">
-                                <thead>
-                                    <tr>
-                                        <th>Formation</th>
-                                        <th>Échéance</th>
-                                        <th>Priorité</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php foreach ($formations_techniques_renouvellement as $item): ?>
-                                        <tr>
-                                            <td>
-                                                <small><?= htmlspecialchars($item['formation']['intitule']) ?></small>
-                                                <br><code class="small"><?= htmlspecialchars($item['formation']['code']) ?></code>
-                                            </td>
-                                            <td><?= date('d/m/Y', strtotime($item['prochaine_echeance'])) ?></td>
-                                            <td>
-                                                <?php if ($item['jours_restants'] <= 365): ?>
-                                                    <span class="badge bg-danger">Urgent</span>
-                                                <?php else: ?>
-                                                    <span class="badge bg-warning">Programmée</span>
-                                                <?php endif; ?>
-                                            </td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                </tbody>
-                            </table>
-                        </div>
+                        Aucun besoin de formation urgent identifié pour cet agent.
+                        <br><small>Toutes les formations sont soit effectuées récemment, soit déjà planifiées.</small>
                     <?php endif; ?>
+                </div>
+            <?php else: ?>
+                    <?php 
+                    // Grouper les besoins par catégorie
+                    $besoins_par_categorie = [];
+                    foreach ($besoins_formation as $besoin) {
+                        $categorie = getCategorieFormationAgent($besoin['code']);
+                        $besoins_par_categorie[$categorie][] = $besoin;
+                    }
+                    ?>
+                    
+                    <?php foreach ($besoins_par_categorie as $categorie => $besoins): ?>
+                        <div class="mb-3">
+                            <h6 class="text-secondary mb-2"><?= $categorie ?></h6>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-striped">
+                                    <thead>
+                                        <tr>
+                                            <th>Formation</th>
+                                            <th>Échéance</th>
+                                            <th>Priorité</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($besoins as $besoin): ?>
+                                            <?php 
+                                            $priorite_class = '';
+                                            $priorite_label = '';
+                                            if ($besoin['jours_restants'] <= 0) {
+                                                $priorite_class = 'table-danger';
+                                                $priorite_label = 'URGENT';
+                                            } elseif ($besoin['jours_restants'] <= 30) {
+                                                $priorite_class = 'table-warning';
+                                                $priorite_label = 'Important';
+                                            } else {
+                                                $priorite_class = 'table-info';
+                                                $priorite_label = 'Normal';
+                                            }
+                                            
+                                            // Vérifier si c'est une formation périodique
+                                            $is_periodic = strpos($besoin['code'], 'SUR-FTS') !== false;
+                                            $est_planifie = isset($besoin['est_planifie']) && $besoin['est_planifie'] > 0;
+                                            ?>
+                                            <tr class="<?= $priorite_class ?>">
+                                                <td>
+                                                    <strong><?= htmlspecialchars($besoin['code']) ?></strong><br>
+                                                    <small><?= htmlspecialchars($besoin['intitule']) ?></small>
+                                                    <?php if ($est_planifie): ?>
+                                                        <br><span class="badge bg-info mt-1">
+                                                            <i class="fas fa-calendar-check"></i> 
+                                                            <?php if ($is_periodic): ?>
+                                                                Planifiée (<?= $besoin['est_planifie'] ?> fois)
+                                                            <?php else: ?>
+                                                                Déjà planifiée
+                                                            <?php endif; ?>
+                                                        </span>
+                                                    <?php endif; ?>
+                                                </td>
+                                                <td>
+                                                    <?= date('d/m/Y', strtotime($besoin['echeance_prevue'])) ?><br>
+                                                    <small class="text-muted">
+                                                        <?= $besoin['jours_restants'] <= 0 ? 'Échue' : $besoin['jours_restants'] . ' jours' ?>
+                                                    </small>
+                                                </td>
+                                                <td>
+                                                    <span class="badge <?= $besoin['jours_restants'] <= 0 ? 'bg-danger' : ($besoin['jours_restants'] <= 30 ? 'bg-warning' : 'bg-success') ?>">
+                                                        <?= $priorite_label ?>
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    <?php if ($est_planifie && !$is_periodic): ?>
+                                                        <button class="btn btn-sm btn-secondary" disabled title="Formation non-périodique déjà planifiée">
+                                                            <i class="fas fa-ban"></i> Non re-planifiable
+                                                        </button>
+                                                        <br><small class="text-muted mt-1">Formation déjà planifiée</small>
+                                                    <?php else: ?>
+                                                        <button class="btn btn-sm <?= $est_planifie ? 'btn-warning' : 'btn-primary' ?>" 
+                                                                onclick="console.log('Button clicked for agent:', <?= $besoin['agent_id'] ?>, 'formation:', <?= $besoin['formation_id'] ?>); planifierFormationAgent(<?= $besoin['agent_id'] ?>, <?= $besoin['formation_id'] ?>);"
+                                                                title="<?= $est_planifie ? 'Formation périodique - peut être re-planifiée' : 'Planifier cette formation' ?>">
+                                                            <i class="fas fa-calendar-plus"></i> 
+                                                            <?php if ($est_planifie): ?>
+                                                                Re-planifier
+                                                            <?php else: ?>
+                                                                Planifier
+                                                            <?php endif; ?>
+                                                        </button>
+                                                        <?php if ($est_planifie && $is_periodic): ?>
+                                                            <br><small class="text-warning mt-1">Formation périodique</small>
+                                                        <?php endif; ?>
+                                                    <?php endif; ?>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </div>
+            
+            <!-- Section Planifier Formation pour cet agent -->
+            <div class="planning-subsection" id="planifier-agent" style="display: none;">
+                <h5><i class="fas fa-calendar-plus"></i> Planifier une Formation</h5>
+                
+                <form id="planificationFormAgent" method="POST">
+                    <input type="hidden" name="agent_id" value="<?= $agent_id ?>">
+                    
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Formation <span class="text-danger">*</span></label>
+                            <select name="formation_id" class="form-select" required>
+                                <option value="">Sélectionner une formation</option>
+                                <?php foreach ($formations as $formation): ?>
+                                    <option value="<?= $formation['id'] ?>">
+                                        <?= htmlspecialchars($formation['code']) ?> - <?= htmlspecialchars($formation['intitule']) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label class="form-label">Centre de Formation <span class="text-danger">*</span></label>
+                            <select name="centre_formation_prevu" class="form-select" required>
+                                <option value="">Sélectionner un centre</option>
+                                <?php foreach ($centres as $centre): ?>
+                                    <option value="<?= htmlspecialchars($centre['nom']) ?>">
+                                        <?= htmlspecialchars($centre['nom']) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label class="form-label">Date de Début <span class="text-danger">*</span></label>
+                            <input type="date" name="date_prevue_debut" class="form-control" required min="<?= date('Y-m-d') ?>">
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label class="form-label">Date de Fin <span class="text-danger">*</span></label>
+                            <input type="date" name="date_prevue_fin" class="form-control" required min="<?= date('Y-m-d') ?>">
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label class="form-label">Statut</label>
+                            <select name="statut" class="form-select">
+                                <option value="planifie">Planifié</option>
+                                <option value="confirme">Confirmé</option>
+                                <option value="reporte">Reporté</option>
+                            </select>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label class="form-label">Commentaires</label>
+                            <textarea name="commentaires" class="form-control" rows="2" placeholder="Commentaires optionnels..."></textarea>
+                        </div>
+                        
+                        <div class="col-12">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save"></i> Planifier la Formation
+                            </button>
+                            <button type="reset" class="btn btn-outline-secondary ms-2">
+                                <i class="fas fa-undo"></i> Réinitialiser
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            
+            <!-- Section Planning Existant - Tous les agents -->
+            <div class="planning-subsection" id="planning-agent" style="display: none;">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5><i class="fas fa-calendar"></i> Planning des Formations - Tous les Agents</h5>
+                    <div class="d-flex gap-2">
+                        <select class="form-select form-select-sm" id="yearFilterAgent" onchange="filterByYearAgent()" style="width: auto;">
+                            <option value="">Toutes les années</option>
+                            <?php 
+                            $current_year = date('Y');
+                            for ($year = $current_year - 1; $year <= $current_year + 2; $year++): 
+                            ?>
+                                <option value="<?= $year ?>" <?= $year == $current_year ? 'selected' : '' ?>>
+                                    <?= $year ?>
+                                </option>
+                            <?php endfor; ?>
+                        </select>
+                        <button class="btn btn-sm btn-outline-success" onclick="downloadPlanningAgent()">
+                            <i class="fas fa-download"></i> Télécharger
+                        </button>
+                    </div>
                 </div>
                 
-                <div class="col-md-6">
-                    <h6 class="text-warning">Formations Non Effectuées (Prioritaires)</h6>
-                    <?php if (empty($formations_prioritaires)): ?>
-                        <div class="alert alert-success">
-                            <i class="fas fa-check-circle"></i> Toutes les formations prioritaires sont effectuées.
-                        </div>
-                    <?php else: ?>
-                        <div class="table-responsive">
-                            <table class="table table-sm">
-                                <thead>
-                                    <tr>
-                                        <th>Formation</th>
-                                        <th>Catégorie</th>
-                                        <th>Statut</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php foreach ($formations_prioritaires as $formation): ?>
-                                        <tr>
-                                            <td>
-                                                <small><?= htmlspecialchars($formation['intitule']) ?></small>
-                                                <br><code class="small"><?= htmlspecialchars($formation['code']) ?></code>
-                                            </td>
-                                            <td>
-                                                <span class="badge bg-secondary small">
-                                                    <?php 
-                                                    if (strpos($formation['code'], 'SUR-FAM') !== false) echo 'FAM';
-                                                    elseif (strpos($formation['code'], 'SUR-INI') !== false) echo 'INI';
-                                                    elseif (strpos($formation['code'], 'SUR-FCE') !== false) echo 'FCE';
-                                                    elseif (strpos($formation['code'], 'SUR-FTS') !== false) echo 'FTS';
-                                                    ?>
-                                                </span>
-                                            </td>
-                                            <td>
-                                                <span class="badge bg-warning small">
-                                                    <i class="fas fa-clock"></i> À planifier
-                                                </span>
-                                            </td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                </tbody>
-                            </table>
-                        </div>
-                    <?php endif; ?>
-                </div>
+                <?php 
+                // Récupérer le planning de tous les agents
+                $stmt_all_planning = $pdo->prepare("
+                    SELECT 
+                        pf.*,
+                        a.matricule,
+                        a.prenom,
+                        a.nom,
+                        f.code,
+                        f.intitule,
+                        cf.nom as centre_nom,
+                        YEAR(pf.date_prevue_debut) as annee_formation
+                    FROM planning_formations pf
+                    JOIN agents a ON pf.agent_id = a.id
+                    JOIN formations f ON pf.formation_id = f.id
+                    LEFT JOIN centres_formation cf ON pf.centre_formation_prevu = cf.nom
+                    WHERE pf.statut != 'annule'
+                    ORDER BY a.nom, a.prenom, pf.date_prevue_debut ASC
+                ");
+                $stmt_all_planning->execute();
+                $all_planning = $stmt_all_planning->fetchAll();
+                ?>
+                
+                <?php if (empty($all_planning)): ?>
+                    <div class="alert alert-info text-center">
+                        <i class="fas fa-info-circle"></i> Aucune formation planifiée.
+                    </div>
+                <?php else: ?>
+                    <?php 
+                    // Grouper les plannings par agent
+                    $planning_par_agent_global = [];
+                    foreach ($all_planning as $planning) {
+                        $agent_key = $planning['agent_id'];
+                        if (!isset($planning_par_agent_global[$agent_key])) {
+                            $planning_par_agent_global[$agent_key] = [
+                                'agent' => $planning,
+                                'formations' => []
+                            ];
+                        }
+                        $planning_par_agent_global[$agent_key]['formations'][] = $planning;
+                    }
+                    ?>
+                    
+                    <div id="planningGlobalContent">
+                        <?php foreach ($planning_par_agent_global as $agent_data): ?>
+                            <div class="mb-4 agent-planning-section" data-agent-id="<?= $agent_data['agent']['agent_id'] ?>">
+                                <h6 class="text-primary border-bottom pb-2 mb-3">
+                                    <i class="fas fa-user"></i> 
+                                    <?= htmlspecialchars($agent_data['agent']['matricule']) ?> - 
+                                    <?= htmlspecialchars($agent_data['agent']['prenom'] . ' ' . $agent_data['agent']['nom']) ?>
+                                    <span class="badge bg-secondary ms-2"><?= count($agent_data['formations']) ?> formation(s)</span>
+                                </h6>
+                                
+                                <?php 
+                                // Grouper les formations par catégorie
+                                $formations_par_categorie_global = [];
+                                foreach ($agent_data['formations'] as $formation) {
+                                    $categorie = getCategorieFormationAgent($formation['code']);
+                                    $formations_par_categorie_global[$categorie][] = $formation;
+                                }
+                                ?>
+                                
+                                <?php foreach ($formations_par_categorie_global as $categorie => $formations): ?>
+                                    <div class="mb-3 category-section">
+                                        <h6 class="text-secondary mb-2"><?= $categorie ?></h6>
+                                        <div class="table-responsive">
+                                            <table class="table table-sm table-striped">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Formation</th>
+                                                        <th>Centre</th>
+                                                        <th>Dates</th>
+                                                        <th>Statut</th>
+                                                        <th>Actions</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <?php foreach ($formations as $planning): ?>
+                                                        <tr class="planning-row" data-year="<?= $planning['annee_formation'] ?>">
+                                                            <td>
+                                                                <strong><?= htmlspecialchars($planning['code']) ?></strong><br>
+                                                                <small><?= htmlspecialchars($planning['intitule']) ?></small>
+                                                            </td>
+                                                            <td><?= htmlspecialchars($planning['centre_nom'] ?? $planning['centre_formation_prevu']) ?></td>
+                                                            <td>
+                                                                Du <?= date('d/m/Y', strtotime($planning['date_prevue_debut'])) ?><br>
+                                                                au <?= date('d/m/Y', strtotime($planning['date_prevue_fin'])) ?>
+                                                            </td>
+                                                            <td>
+                                                                <span class="badge <?= 
+                                                                    $planning['statut'] == 'confirme' ? 'bg-success' : 
+                                                                    ($planning['statut'] == 'reporte' ? 'bg-warning' : 'bg-primary') 
+                                                                ?>">
+                                                                    <?= ucfirst($planning['statut']) ?>
+                                                                </span>
+                                                            </td>
+                                                            <td>
+                                                                <div class="btn-group btn-group-sm">
+                                                                    <button class="btn btn-outline-primary" 
+                                                                            onclick="modifierPlanningAgent(<?= $planning['id'] ?>)">
+                                                                        <i class="fas fa-edit"></i>
+                                                                    </button>
+                                                                    <button class="btn btn-outline-danger" 
+                                                                            onclick="supprimerPlanningAgent(<?= $planning['id'] ?>)">
+                                                                        <i class="fas fa-trash"></i>
+                                                                    </button>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    <?php endforeach; ?>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
             </div>
         </div>
+
     </div>
 </div>
 
@@ -627,6 +1006,583 @@ function addFormationEffectuee(agentId) {
 
 function editFormationEffectuee(formationId) {
     console.log('Modifier formation:', formationId);
+}
+
+// Fonctions pour la gestion du planning dans la modal agent
+function showPlanningSection(sectionId) {
+    console.log('Switching to planning section:', sectionId);
+    
+    // Chercher dans la modal spécifiquement
+    const modal = document.querySelector('#agentModal .modal-body') || document.querySelector('.modal-body') || document;
+    
+    // Masquer toutes les sous-sections de planning
+    const planningSections = modal.querySelectorAll('.planning-subsection');
+    console.log('Found planning subsections:', planningSections.length);
+    
+    planningSections.forEach(section => {
+        section.style.display = 'none';
+        section.classList.remove('active');
+        console.log('Hiding section:', section.id);
+    });
+    
+    // Retirer la classe active de tous les boutons de navigation du planning
+    const planningButtons = modal.querySelectorAll('[id^="btn-"][id$="-agent"]');
+    console.log('Found planning buttons:', planningButtons.length);
+    
+    planningButtons.forEach(btn => {
+        btn.classList.remove('btn-primary', 'active');
+        btn.classList.add('btn-outline-primary');
+        console.log('Deactivating button:', btn.id);
+    });
+    
+    // Afficher la sous-section sélectionnée
+    const targetSection = modal.querySelector('#' + sectionId);
+    console.log('Looking for section:', sectionId, 'Found:', !!targetSection);
+    
+    if (targetSection) {
+        targetSection.style.display = 'block';
+        targetSection.classList.add('active');
+        console.log('Planning section displayed:', sectionId);
+    } else {
+        console.error('Planning section not found:', sectionId);
+        // Debug: lister toutes les sections disponibles
+        const allSections = modal.querySelectorAll('[id]');
+        console.log('Available sections with IDs:');
+        allSections.forEach(section => {
+            console.log(' - ', section.id, section.className);
+        });
+    }
+    
+    // Activer le bouton correspondant
+    const activeBtn = modal.querySelector('#btn-' + sectionId);
+    console.log('Looking for button:', 'btn-' + sectionId, 'Found:', !!activeBtn);
+    
+    if (activeBtn) {
+        activeBtn.classList.remove('btn-outline-primary');
+        activeBtn.classList.add('btn-primary', 'active');
+        console.log('Planning button activated:', 'btn-' + sectionId);
+    } else {
+        console.error('Planning button not found:', 'btn-' + sectionId);
+        // Debug: lister tous les boutons disponibles
+        const allButtons = modal.querySelectorAll('button[id]');
+        console.log('Available buttons with IDs:');
+        allButtons.forEach(btn => {
+            console.log(' - ', btn.id, btn.className);
+        });
+    }
+}
+
+// Cette fonction est définie dans le fichier get_agent_details.php mais doit être accessible globalement
+// Elle sera redéfinie dans admin.php pour être dans le scope global
+
+function modifierPlanningAgent(planningId) {
+    console.log('Modifier planning:', planningId);
+    
+    // Récupérer les détails de la planification
+    fetch('ajax/get_planning_details.php?id=' + planningId)
+        .then(response => response.json())
+        .then(result => {
+            if (!result.success) {
+                alert('Erreur: ' + result.message);
+                return;
+            }
+            
+            const planning = result.data;
+            
+            // Créer le modal de modification
+            const modalHtml = `
+                <div class="modal fade" id="modificationPlanningModal" tabindex="-1">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Modifier la Planification</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <form id="modificationPlanningForm">
+                                    <input type="hidden" name="planning_id" value="${planning.id}">
+                                    
+                                    <div class="mb-3">
+                                        <label class="form-label">Agent</label>
+                                        <input type="text" class="form-control" value="${planning.matricule} - ${planning.prenom} ${planning.nom}" readonly>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label class="form-label">Formation</label>
+                                        <input type="text" class="form-control" value="${planning.code} - ${planning.intitule}" readonly>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label class="form-label">Centre de formation *</label>
+                                        <select class="form-select" name="centre_formation_prevu" required>
+                                            <option value="">Sélectionner...</option>
+                                            <option value="ENAC" ${planning.centre_formation_prevu === 'ENAC' ? 'selected' : ''}>ENAC</option>
+                                            <option value="ERNAM" ${planning.centre_formation_prevu === 'ERNAM' ? 'selected' : ''}>ERNAM</option>
+                                            <option value="ITAerea" ${planning.centre_formation_prevu === 'ITAerea' ? 'selected' : ''}>ITAerea</option>
+                                            <option value="IFURTA" ${planning.centre_formation_prevu === 'IFURTA' ? 'selected' : ''}>IFURTA</option>
+                                            <option value="EPT" ${planning.centre_formation_prevu === 'EPT' ? 'selected' : ''}>EPT</option>
+                                            <option value="IFNPC" ${planning.centre_formation_prevu === 'IFNPC' ? 'selected' : ''}>IFNPC</option>
+                                            <option value="EMAERO services" ${planning.centre_formation_prevu === 'EMAERO services' ? 'selected' : ''}>EMAERO services</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <div class="mb-3">
+                                                <label class="form-label">Date de début *</label>
+                                                <input type="date" class="form-control" name="date_prevue_debut" value="${planning.date_prevue_debut}" required>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <div class="mb-3">
+                                                <label class="form-label">Date de fin *</label>
+                                                <input type="date" class="form-control" name="date_prevue_fin" value="${planning.date_prevue_fin}" required>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label class="form-label">Statut</label>
+                                        <select class="form-select" name="statut">
+                                            <option value="planifie" ${planning.statut === 'planifie' ? 'selected' : ''}>Planifié</option>
+                                            <option value="confirme" ${planning.statut === 'confirme' ? 'selected' : ''}>Confirmé</option>
+                                            <option value="reporte" ${planning.statut === 'reporte' ? 'selected' : ''}>Reporté</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label class="form-label">Commentaires</label>
+                                        <textarea class="form-control" name="commentaires" rows="3">${planning.commentaires || ''}</textarea>
+                                    </div>
+                                </form>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                                <button type="button" class="btn btn-primary" onclick="sauvegarderModificationPlanning()">Enregistrer</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Ajouter le modal au DOM s'il n'existe pas
+            if (!document.getElementById('modificationPlanningModal')) {
+                document.body.insertAdjacentHTML('beforeend', modalHtml);
+            } else {
+                document.getElementById('modificationPlanningModal').outerHTML = modalHtml;
+            }
+            
+            // Afficher le modal
+            new bootstrap.Modal(document.getElementById('modificationPlanningModal')).show();
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Erreur lors du chargement des détails de la planification.');
+        });
+}
+
+// Fonction pour sauvegarder la modification de planning
+function sauvegarderModificationPlanning() {
+    const form = document.getElementById('modificationPlanningForm');
+    const formData = new FormData(form);
+    
+    fetch('ajax/update_planning.php', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Planification modifiée avec succès!');
+            bootstrap.Modal.getInstance(document.getElementById('modificationPlanningModal')).hide();
+            
+            // Recharger les détails de l'agent
+            const agentIdInput = document.querySelector('input[name="agent_id"]');
+            if (agentIdInput && agentIdInput.value) {
+                const agentId = agentIdInput.value;
+                if (typeof loadAgentDetails === 'function') {
+                    loadAgentDetails(agentId);
+                } else if (typeof viewAgent === 'function') {
+                    viewAgent(agentId);
+                } else {
+                    location.reload();
+                }
+            } else {
+                location.reload();
+            }
+        } else {
+            alert('Erreur: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Une erreur est survenue lors de la modification.');
+    });
+}
+
+function supprimerPlanningAgent(planningId) {
+    if (confirm('Êtes-vous sûr de vouloir supprimer cette planification ?')) {
+        fetch('ajax/delete_planning.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                planning_id: planningId
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('Planification supprimée avec succès !');
+                // Recharger les détails de l'agent pour mettre à jour l'affichage
+                const agentIdInput = document.querySelector('input[name="agent_id"]');
+                if (agentIdInput && agentIdInput.value) {
+                    const agentId = agentIdInput.value;
+                    // Appeler la fonction globale loadAgentDetails si elle existe
+                    if (typeof loadAgentDetails === 'function') {
+                        loadAgentDetails(agentId);
+                    } else if (typeof viewAgent === 'function') {
+                        viewAgent(agentId);
+                    } else {
+                        // Recharger la page en dernier recours
+                        location.reload();
+                    }
+                } else {
+                    // Recharger juste cette section du planning
+                    location.reload();
+                }
+            } else {
+                alert('Erreur: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Une erreur est survenue lors de la suppression.');
+        });
+    }
+}
+
+// Fonction globale pour initialiser les event listeners du planning
+function initializePlanningEventListeners() {
+    console.log('Initializing planning event listeners...');
+    
+    // Attendre un peu pour s'assurer que les éléments sont dans le DOM
+    setTimeout(() => {
+        const planificationFormAgent = document.getElementById('planificationFormAgent');
+        console.log('Planning form found:', !!planificationFormAgent);
+        
+        if (planificationFormAgent && !planificationFormAgent.hasAttribute('data-listener-added')) {
+            planificationFormAgent.setAttribute('data-listener-added', 'true');
+            planificationFormAgent.addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const submitBtn = this.querySelector('button[type="submit"]');
+                const originalText = submitBtn.innerHTML;
+                
+                // Validation des dates
+                const dateDebut = new Date(this.querySelector('input[name="date_prevue_debut"]').value);
+                const dateFin = new Date(this.querySelector('input[name="date_prevue_fin"]').value);
+                
+                if (dateFin <= dateDebut) {
+                    alert('La date de fin doit être postérieure à la date de début.');
+                    return;
+                }
+                
+                // Désactiver le bouton
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Planification...';
+                
+                const formData = new FormData(this);
+                
+                fetch('ajax/save_planning.php', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Récupérer les informations pour le message
+                        const formationSelect = document.querySelector('#planifier-agent select[name="formation_id"]');
+                        const formationText = formationSelect ? formationSelect.options[formationSelect.selectedIndex].text : 'la formation';
+                        const centreSelect = document.querySelector('#planifier-agent select[name="centre_formation_prevu"]');
+                        const centreText = centreSelect ? centreSelect.options[centreSelect.selectedIndex].text : '';
+                        const dateDebut = document.querySelector('#planifier-agent input[name="date_prevue_debut"]').value;
+                        const dateFin = document.querySelector('#planifier-agent input[name="date_prevue_fin"]').value;
+                        
+                        // Message simple et clair pour l'utilisateur
+                        alert(`✅ PLANNING AVEC SUCCÈS !
+
+📚 Formation : ${formationText}
+🏢 Centre : ${centreText}
+📅 Dates : Du ${new Date(dateDebut).toLocaleDateString('fr-FR')} au ${new Date(dateFin).toLocaleDateString('fr-FR')}
+
+La formation a été ajoutée au planning de l'agent.`);
+                        
+                        // Réinitialiser le formulaire
+                        form.reset();
+                        submitBtn.innerHTML = originalText;
+                        submitBtn.disabled = false;
+                        submitBtn.className = 'btn btn-primary';
+                        
+                        // Naviguer vers la section Planning Existant
+                        setTimeout(() => {
+                            // Aller à la section Planning
+                            showAgentSection('planning');
+                            
+                            // Puis aller à Planning Existant
+                            setTimeout(() => {
+                                showPlanningSection('planning-agent');
+                                
+                                // Recharger les détails de l'agent pour voir le nouveau planning
+                                const agentId = formData.get('agent_id');
+                                if (agentId) {
+                                    if (typeof loadAgentDetails === 'function') {
+                                        loadAgentDetails(agentId);
+                                    } else if (typeof viewAgent === 'function') {
+                                        viewAgent(agentId);
+                                    }
+                                }
+                            }, 300);
+                        }, 500);
+                    } else {
+                        submitBtn.innerHTML = originalText;
+                        submitBtn.disabled = false;
+                        submitBtn.className = 'btn btn-primary';
+                        
+                        // Message d'erreur simple
+                        alert(`❌ ERREUR DE PLANIFICATION
+
+${data.message}
+
+Veuillez vérifier les informations et réessayer.`);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    submitBtn.innerHTML = originalText;
+                    submitBtn.disabled = false;
+                    submitBtn.className = 'btn btn-primary d-block w-100';
+                    alert('Une erreur est survenue: ' + error.message);
+                });
+            });
+        }
+    }, 500);
+}
+
+// Appeler l'initialisation quand le contenu de la modal est chargé
+document.addEventListener('DOMContentLoaded', function() {
+    initializePlanningEventListeners();
+});
+
+// Aussi appeler après le chargement du contenu de l'agent
+window.addEventListener('agentContentLoaded', function() {
+    initializePlanningEventListeners();
+});
+
+// Fonction pour filtrer par année dans la section planning global
+function filterByYearAgent() {
+    console.log('=== DEBUT FILTRAGE PAR ANNEE ===');
+    
+    // Toujours chercher dans la modal car c'est là que se trouve le planning
+    const modalBody = document.querySelector('#agentModal .modal-body');
+    if (!modalBody) {
+        console.error('Modal body non trouvé');
+        return;
+    }
+    
+    const yearFilter = modalBody.querySelector('#yearFilterAgent');
+    if (!yearFilter) {
+        console.error('Filtre année non trouvé dans la modal');
+        return;
+    }
+    
+    const selectedYear = yearFilter.value;
+    console.log('Année sélectionnée:', selectedYear);
+    
+    // Chercher les sections d'agents dans la modal
+    const agentSections = modalBody.querySelectorAll('.agent-planning-section');
+    console.log('Sections d\'agents trouvées:', agentSections.length);
+    
+    agentSections.forEach((section, index) => {
+        console.log(`Traitement section ${index + 1}:`, section);
+        
+        if (!selectedYear) {
+            // Afficher toutes les sections si aucune année n'est sélectionnée
+            section.style.display = '';
+            const rows = section.querySelectorAll('tr[data-year]');
+            console.log(`Section ${index + 1} - Lignes trouvées:`, rows.length);
+            rows.forEach(row => {
+                row.style.display = '';
+                console.log('Ligne affichée:', row.getAttribute('data-year'));
+            });
+            
+            // Afficher toutes les catégories
+            const categories = section.querySelectorAll('.category-section');
+            categories.forEach(cat => cat.style.display = '');
+        } else {
+            // Vérifier si cette section d'agent a des formations pour l'année sélectionnée
+            const rows = section.querySelectorAll('tr[data-year]');
+            let hasFormationsInYear = false;
+            
+            console.log(`Section ${index + 1} - Filtrage pour année ${selectedYear}, lignes:`, rows.length);
+            
+            rows.forEach(row => {
+                const rowYear = row.getAttribute('data-year');
+                console.log(`Ligne année: ${rowYear}, recherchée: ${selectedYear}`);
+                if (rowYear === selectedYear) {
+                    row.style.display = '';
+                    hasFormationsInYear = true;
+                    console.log('Ligne affichée pour année correspondante');
+                } else {
+                    row.style.display = 'none';
+                    console.log('Ligne masquée');
+                }
+            });
+            
+            // Masquer toute la section de l'agent s'il n'a pas de formations cette année
+            if (hasFormationsInYear) {
+                section.style.display = '';
+                console.log(`Section ${index + 1} affichée (a des formations)`);
+                
+                // Afficher/masquer les catégories selon qu'elles ont des formations visibles
+                const categoryDivs = section.querySelectorAll('.category-section');
+                categoryDivs.forEach(categoryDiv => {
+                    const visibleRows = categoryDiv.querySelectorAll('tr[data-year]:not([style*="none"])');
+                    if (visibleRows.length > 0) {
+                        categoryDiv.style.display = '';
+                    } else {
+                        categoryDiv.style.display = 'none';
+                    }
+                });
+            } else {
+                section.style.display = 'none';
+                console.log(`Section ${index + 1} masquée (pas de formations)`);
+            }
+        }
+    });
+    
+    console.log('=== FIN FILTRAGE PAR ANNEE ===');
+}
+
+// Fonction pour télécharger le planning
+function downloadPlanningAgent() {
+    console.log('=== DEBUT TELECHARGEMENT ===');
+    
+    // Chercher dans la modal
+    const modalBody = document.querySelector('#agentModal .modal-body');
+    if (!modalBody) {
+        alert('Erreur: Modal non trouvée');
+        return;
+    }
+    
+    const yearFilter = modalBody.querySelector('#yearFilterAgent');
+    const planningContent = modalBody.querySelector('#planningGlobalContent');
+    
+    console.log('Filtre année trouvé:', !!yearFilter);
+    console.log('Contenu planning trouvé:', !!planningContent);
+    
+    if (!planningContent) {
+        alert('Aucun contenu de planning à télécharger.');
+        return;
+    }
+    
+    const selectedYear = yearFilter ? yearFilter.value : '';
+    const yearText = selectedYear ? ` - Année ${selectedYear}` : '';
+    
+    console.log('Téléchargement pour l\'année:', selectedYear || 'toutes');
+    
+    // Cloner le contenu pour le manipuler sans affecter l'affichage
+    const contentClone = planningContent.cloneNode(true);
+    
+    // Si un filtre d'année est actif, supprimer les éléments masqués
+    if (selectedYear) {
+        // Supprimer les sections d'agents masquées
+        contentClone.querySelectorAll('.agent-planning-section').forEach(section => {
+            if (section.style.display === 'none') {
+                section.remove();
+            } else {
+                // Supprimer les catégories masquées
+                section.querySelectorAll('.category-section').forEach(cat => {
+                    if (cat.style.display === 'none') {
+                        cat.remove();
+                    } else {
+                        // Supprimer les lignes masquées
+                        cat.querySelectorAll('.planning-row').forEach(row => {
+                            if (row.style.display === 'none') {
+                                row.remove();
+                            }
+                        });
+                    }
+                });
+            }
+        });
+    }
+    
+    // Supprimer les boutons d'action dans le clone
+    contentClone.querySelectorAll('.btn-group').forEach(btnGroup => btnGroup.remove());
+    
+    const printContent = `
+        <html>
+        <head>
+            <title>Planning des Formations${yearText}</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 20px; }
+                .header { text-align: center; margin-bottom: 30px; }
+                .logo { max-height: 60px; }
+                table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px; }
+                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                th { background-color: #124c97; color: white; font-weight: bold; }
+                .text-primary { color: #124c97; font-weight: bold; }
+                .text-secondary { color: #6c757d; font-style: italic; }
+                .border-bottom { border-bottom: 2px solid #124c97; padding-bottom: 5px; margin-bottom: 10px; }
+                .mb-3, .mb-4 { margin-bottom: 15px; }
+                .badge { 
+                    display: inline-block; 
+                    padding: 3px 8px; 
+                    border-radius: 3px; 
+                    font-size: 11px;
+                    font-weight: bold;
+                }
+                .bg-success { background-color: #28a745; color: white; }
+                .bg-primary { background-color: #124c97; color: white; }
+                .bg-warning { background-color: #ffc107; color: black; }
+                .bg-secondary { background-color: #6c757d; color: white; }
+                h6 { margin-top: 15px; margin-bottom: 8px; }
+                @media print { 
+                    body { margin: 0; }
+                    .no-print { display: none; }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <img src="logo-anacim.png" alt="ANACIM" class="logo">
+                <h1>PLANNING DES FORMATIONS${yearText}</h1>
+                <p>Généré le ${new Date().toLocaleDateString('fr-FR')}</p>
+            </div>
+            ${contentClone.innerHTML}
+        </body>
+        </html>
+    `;
+    
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(printContent);
+    printWindow.document.close();
+    
+    // Attendre que le document soit chargé avant d'imprimer
+    printWindow.onload = function() {
+        console.log('Document prêt pour l\'impression');
+        printWindow.print();
+    };
+    
+    // Fallback si onload ne fonctionne pas
+    setTimeout(() => {
+        console.log('Tentative d\'impression via fallback');
+        printWindow.print();
+    }, 1000);
+    
+    console.log('=== FIN TELECHARGEMENT ===');
 }
 
 function deleteDiplome(diplomeId) {
