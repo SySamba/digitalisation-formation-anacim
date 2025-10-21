@@ -14,7 +14,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $password = $_POST['password'] ?? '';
     
     // Vérifier les identifiants
-    if ($email === 'sambasy837@gmail.com' && $password === 'anacim2025') {
+    if ($email === 'coutay.ba@anacim.sn' && $password === 'anacim2025') {
         $_SESSION['admin_logged_in'] = true;
         $_SESSION['admin_email'] = $email;
         header('Location: admin.php');

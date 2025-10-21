@@ -1116,6 +1116,7 @@ function modifierPlanningAgent(planningId) {
                                         <label class="form-label">Centre de formation *</label>
                                         <select class="form-select" name="centre_formation_prevu" required>
                                             <option value="">Sélectionner...</option>
+                                            <option value="ANACIM" ${planning.centre_formation_prevu === 'ANACIM' ? 'selected' : ''}>ANACIM</option>
                                             <option value="ENAC" ${planning.centre_formation_prevu === 'ENAC' ? 'selected' : ''}>ENAC</option>
                                             <option value="ERNAM" ${planning.centre_formation_prevu === 'ERNAM' ? 'selected' : ''}>ERNAM</option>
                                             <option value="ITAerea" ${planning.centre_formation_prevu === 'ITAerea' ? 'selected' : ''}>ITAerea</option>

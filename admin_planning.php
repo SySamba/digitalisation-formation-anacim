@@ -34,13 +34,14 @@ try {
 } catch (PDOException $e) {
     // Si la table n'existe pas, utiliser une liste par défaut
     $centres_formation = [
-        ['id' => 1, 'nom' => 'ENAC'],
-        ['id' => 2, 'nom' => 'ERNAM'],
-        ['id' => 3, 'nom' => 'ITAerea'],
-        ['id' => 4, 'nom' => 'IFURTA'],
-        ['id' => 5, 'nom' => 'EPT'],
-        ['id' => 6, 'nom' => 'IFNPC'],
-        ['id' => 7, 'nom' => 'EMAERO services']
+        ['id' => 1, 'nom' => 'ANACIM'],
+        ['id' => 2, 'nom' => 'ENAC'],
+        ['id' => 3, 'nom' => 'ERNAM'],
+        ['id' => 4, 'nom' => 'ITAerea'],
+        ['id' => 5, 'nom' => 'IFURTA'],
+        ['id' => 6, 'nom' => 'EPT'],
+        ['id' => 7, 'nom' => 'IFNPC'],
+        ['id' => 8, 'nom' => 'EMAERO services']
     ];
 }
 

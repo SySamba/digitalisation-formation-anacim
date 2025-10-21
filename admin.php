@@ -331,6 +331,7 @@ $formations_urgentes = count(array_filter($formations_a_renouveler, function($f)
                                         <select class="form-select" name="centre_formation_prevu" required>
                                             <option value="">Sélectionner...</option>
                                             <option value="ENAC">ENAC</option>
+                                            <option value="ANACIM">ANACIM</option>
                                             <option value="ERNAM">ERNAM</option>
                                             <option value="ITAerea">ITAerea</option>
                                             <option value="IFURTA">IFURTA</option>
