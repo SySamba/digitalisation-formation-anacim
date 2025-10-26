@@ -12,7 +12,7 @@ class Agent {
     public function create($data) {
         $query = "INSERT INTO " . $this->table_name . " 
                   (matricule, prenom, nom, date_recrutement, structure_attache, 
-                   domaine_activites, specialiste, grade, date_nomination, 
+                   domaine_activites, specialite, grade, date_nomination, 
                    numero_badge, date_validite_badge, date_prestation_serment, photo) 
                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
@@ -25,7 +25,7 @@ class Agent {
             $data['date_recrutement'],
             $data['structure_attache'] ?? null,
             $data['domaine_activites'] ?? null,
-            $data['specialiste'] ?? null,
+            $data['specialite'] ?? null,
             $data['grade'],
             $data['date_nomination'] ?? null,
             $data['numero_badge'] ?? null,
@@ -52,7 +52,7 @@ class Agent {
     public function update($id, $data) {
         $query = "UPDATE " . $this->table_name . " 
                   SET matricule=?, prenom=?, nom=?, date_recrutement=?, 
-                      structure_attache=?, domaine_activites=?, specialiste=?, 
+                      structure_attache=?, domaine_activites=?, specialite=?, 
                       grade=?, date_nomination=?, numero_badge=?, 
                       date_validite_badge=?, date_prestation_serment=?, photo=?
                   WHERE id=?";
@@ -66,7 +66,7 @@ class Agent {
             $data['date_recrutement'],
             $data['structure_attache'] ?? null,
             $data['domaine_activites'] ?? null,
-            $data['specialiste'] ?? null,
+            $data['specialite'] ?? null,
             $data['grade'],
             $data['date_nomination'] ?? null,
             $data['numero_badge'] ?? null,

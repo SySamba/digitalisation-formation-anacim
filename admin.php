@@ -281,7 +281,9 @@ $formations_urgentes = count(array_filter($formations_a_renouveler, function($f)
         function loadAgentDetails(agentId) {
             console.log('Reloading agent details for ID:', agentId);
             
-            fetch('ajax/get_agent_details.php?id=' + agentId)
+            // Ajouter un timestamp pour éviter le cache
+            const timestamp = new Date().getTime();
+            fetch('ajax/get_agent_details.php?id=' + agentId + '&_t=' + timestamp)
                 .then(response => {
                     if (!response.ok) {
                         throw new Error(`HTTP error! status: ${response.status}`);
@@ -295,6 +297,7 @@ $formations_urgentes = count(array_filter($formations_a_renouveler, function($f)
                         
                         // Déclencher l'événement pour initialiser les listeners
                         window.dispatchEvent(new CustomEvent('agentContentLoaded'));
+                        console.log('Agent details reloaded with cache-busting');
                     } else {
                         console.error('Modal content element not found');
                     }
@@ -828,6 +831,345 @@ $formations_urgentes = count(array_filter($formations_a_renouveler, function($f)
             
             console.log('=== FIN TELECHARGEMENT ===');
         }
+
+        // ========== GESTIONNAIRE PLANIFICATION AGENT ==========
+        // Utiliser la délégation d'événements pour intercepter la soumission du formulaire
+        console.log('🚀 INITIALISATION GESTIONNAIRE PLANIFICATION');
+        
+        document.addEventListener('submit', function(e) {
+            if (e.target && e.target.id === 'planificationFormAgent') {
+                e.preventDefault();
+                console.log('✅ FORMULAIRE PLANIFICATION INTERCEPTÉ');
+                
+                const form = e.target;
+                const formData = new FormData(form);
+                const submitButton = form.querySelector('button[type="submit"]');
+                const originalText = submitButton ? submitButton.innerHTML : '';
+                
+                console.log('📝 Données:');
+                for (let [key, value] of formData.entries()) {
+                    console.log(`  ${key}: ${value}`);
+                }
+                
+                if (submitButton) {
+                    submitButton.disabled = true;
+                    submitButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enregistrement...';
+                }
+                
+                fetch('ajax/save_planning.php', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => {
+                    console.log('📡 Réponse:', response.status);
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('📊 Résultat:', data);
+                    
+                    if (data.success) {
+                        const alertDiv = document.createElement('div');
+                        alertDiv.className = 'alert alert-success alert-dismissible fade show mt-3';
+                        alertDiv.innerHTML = `
+                            <strong><i class="fas fa-check-circle"></i> Succès!</strong> ${data.message}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        `;
+                        form.parentNode.insertBefore(alertDiv, form);
+                        form.reset();
+                        
+                        const agentId = formData.get('agent_id');
+                        console.log('🔄 Rechargement agent:', agentId);
+                        
+                        setTimeout(() => {
+                            const timestamp = new Date().getTime();
+                            fetch('ajax/get_agent_details.php?id=' + agentId + '&_t=' + timestamp)
+                                .then(response => response.text())
+                                .then(html => {
+                                    const modalBody = document.getElementById('agentModalBody');
+                                    if (modalBody) {
+                                        modalBody.innerHTML = html;
+                                        console.log('✅ Rechargé');
+                                    }
+                                })
+                                .catch(err => console.error('❌ Erreur rechargement:', err));
+                        }, 1000);
+                        
+                        setTimeout(() => alertDiv.remove(), 5000);
+                    } else {
+                        const alertDiv = document.createElement('div');
+                        alertDiv.className = 'alert alert-danger alert-dismissible fade show mt-3';
+                        alertDiv.innerHTML = `
+                            <strong><i class="fas fa-exclamation-triangle"></i> Erreur!</strong> ${data.message}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        `;
+                        form.parentNode.insertBefore(alertDiv, form);
+                        setTimeout(() => alertDiv.remove(), 8000);
+                    }
+                })
+                .catch(error => {
+                    console.error('❌ ERREUR:', error);
+                    alert('Erreur de connexion: ' + error.message);
+                })
+                .finally(() => {
+                    if (submitButton) {
+                        submitButton.disabled = false;
+                        submitButton.innerHTML = originalText;
+                    }
+                });
+            }
+        }, true);
+        
+        console.log('✅ Gestionnaire planification prêt');
+
+        // ========== FONCTIONS MODIFICATION/SUPPRESSION PLANNING ==========
+        
+        function modifierPlanningAgent(planningId) {
+            console.log('🔧 Modifier planning:', planningId);
+            
+            fetch('ajax/get_planning_details.php?id=' + planningId)
+                .then(response => response.json())
+                .then(result => {
+                    if (!result.success) {
+                        alert('Erreur: ' + result.message);
+                        return;
+                    }
+                    
+                    const planning = result.data;
+                    console.log('📊 Planning reçu:', planning);
+                    
+                    const modalHtml = `
+                        <div class="modal fade" id="modificationPlanningModal" tabindex="-1">
+                            <div class="modal-dialog modal-lg">
+                                <div class="modal-content">
+                                    <div class="modal-header bg-primary text-white">
+                                        <h5 class="modal-title"><i class="fas fa-edit"></i> Modifier la Planification</h5>
+                                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                                    </div>
+                                    <div class="modal-body">
+                                        <form id="modificationPlanningForm">
+                                            <input type="hidden" name="planning_id" value="${planning.id}">
+                                            
+                                            <div class="mb-3">
+                                                <label class="form-label"><i class="fas fa-user"></i> Agent</label>
+                                                <input type="text" class="form-control" value="${planning.matricule} - ${planning.prenom} ${planning.nom}" readonly>
+                                            </div>
+                                            
+                                            <div class="mb-3">
+                                                <label class="form-label"><i class="fas fa-graduation-cap"></i> Formation</label>
+                                                <input type="text" class="form-control" value="${planning.code} - ${planning.intitule}" readonly>
+                                            </div>
+                                            
+                                            <div class="row">
+                                                <div class="col-md-6">
+                                                    <div class="mb-3">
+                                                        <label class="form-label"><i class="fas fa-building"></i> Centre de formation *</label>
+                                                        <select class="form-select" name="centre_formation_prevu" required>
+                                                            <option value="">Sélectionner...</option>
+                                                            <option value="ANACIM" ${planning.centre_formation_prevu === 'ANACIM' ? 'selected' : ''}>ANACIM</option>
+                                                            <option value="ENAC" ${planning.centre_formation_prevu === 'ENAC' ? 'selected' : ''}>ENAC</option>
+                                                            <option value="ERNAM" ${planning.centre_formation_prevu === 'ERNAM' ? 'selected' : ''}>ERNAM</option>
+                                                            <option value="ITAerea" ${planning.centre_formation_prevu === 'ITAerea' ? 'selected' : ''}>ITAerea</option>
+                                                            <option value="IFURTA" ${planning.centre_formation_prevu === 'IFURTA' ? 'selected' : ''}>IFURTA</option>
+                                                            <option value="EPT" ${planning.centre_formation_prevu === 'EPT' ? 'selected' : ''}>EPT</option>
+                                                            <option value="IFNPC" ${planning.centre_formation_prevu === 'IFNPC' ? 'selected' : ''}>IFNPC</option>
+                                                            <option value="EMAERO services" ${planning.centre_formation_prevu === 'EMAERO services' ? 'selected' : ''}>EMAERO services</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <div class="mb-3">
+                                                        <label class="form-label"><i class="fas fa-city"></i> Ville *</label>
+                                                        <input type="text" class="form-control" name="ville" value="${planning.ville || ''}" required placeholder="Ex: Dakar">
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="row">
+                                                <div class="col-md-6">
+                                                    <div class="mb-3">
+                                                        <label class="form-label"><i class="fas fa-globe"></i> Pays *</label>
+                                                        <input type="text" class="form-control" name="pays" value="${planning.pays || ''}" required placeholder="Ex: Sénégal">
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <div class="mb-3">
+                                                        <label class="form-label"><i class="fas fa-clock"></i> Durée (jours) *</label>
+                                                        <input type="number" class="form-control" name="duree" value="${planning.duree || ''}" required min="1" placeholder="Ex: 5">
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="row">
+                                                <div class="col-md-6">
+                                                    <div class="mb-3">
+                                                        <label class="form-label"><i class="fas fa-calendar-alt"></i> Date de début *</label>
+                                                        <input type="date" class="form-control" name="date_prevue_debut" value="${planning.date_prevue_debut}" required>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <div class="mb-3">
+                                                        <label class="form-label"><i class="fas fa-calendar-alt"></i> Date de fin *</label>
+                                                        <input type="date" class="form-control" name="date_prevue_fin" value="${planning.date_prevue_fin}" required>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="row">
+                                                <div class="col-md-6">
+                                                    <div class="mb-3">
+                                                        <label class="form-label"><i class="fas fa-money-bill-wave"></i> Perdiem (FCFA)</label>
+                                                        <input type="number" class="form-control" name="perdiem" value="${planning.perdiem || ''}" min="0" placeholder="Ex: 50000">
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <div class="mb-3">
+                                                        <label class="form-label"><i class="fas fa-exclamation-circle"></i> Priorité *</label>
+                                                        <select class="form-select" name="priorite" required>
+                                                            <option value="1" ${planning.priorite == '1' ? 'selected' : ''}>1 - Très élevé</option>
+                                                            <option value="2" ${planning.priorite == '2' ? 'selected' : ''}>2 - Moyen</option>
+                                                            <option value="3" ${planning.priorite == '3' ? 'selected' : ''}>3 - Moins élevé</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="mb-3">
+                                                <label class="form-label"><i class="fas fa-info-circle"></i> Statut</label>
+                                                <select class="form-select" name="statut">
+                                                    <option value="planifie" ${planning.statut === 'planifie' ? 'selected' : ''}>📅 Planifié</option>
+                                                    <option value="confirme" ${planning.statut === 'confirme' ? 'selected' : ''}>✅ Confirmé</option>
+                                                    <option value="reporte" ${planning.statut === 'reporte' ? 'selected' : ''}>⏰ Reporté</option>
+                                                </select>
+                                            </div>
+                                            
+                                            <div class="mb-3">
+                                                <label class="form-label"><i class="fas fa-comment"></i> Commentaires</label>
+                                                <textarea class="form-control" name="commentaires" rows="3">${planning.commentaires || ''}</textarea>
+                                            </div>
+                                        </form>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                                            <i class="fas fa-times"></i> Annuler
+                                        </button>
+                                        <button type="button" class="btn btn-primary" onclick="sauvegarderModificationPlanning()">
+                                            <i class="fas fa-save"></i> Enregistrer
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    if (!document.getElementById('modificationPlanningModal')) {
+                        document.body.insertAdjacentHTML('beforeend', modalHtml);
+                    } else {
+                        document.getElementById('modificationPlanningModal').outerHTML = modalHtml;
+                    }
+                    
+                    new bootstrap.Modal(document.getElementById('modificationPlanningModal')).show();
+                })
+                .catch(error => {
+                    console.error('❌ Erreur:', error);
+                    alert('Erreur lors du chargement des détails de la planification.');
+                });
+        }
+
+        function sauvegarderModificationPlanning() {
+            console.log('💾 Sauvegarde modification planning...');
+            const form = document.getElementById('modificationPlanningForm');
+            const formData = new FormData(form);
+            
+            fetch('ajax/update_planning.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('📊 Résultat:', data);
+                if (data.success) {
+                    alert('✅ ' + data.message);
+                    bootstrap.Modal.getInstance(document.getElementById('modificationPlanningModal')).hide();
+                    
+                    // Recharger les détails de l'agent
+                    const modalBody = document.getElementById('agentModalBody');
+                    if (modalBody) {
+                        const agentId = document.querySelector('#agentModalBody input[name="agent_id"]')?.value;
+                        if (agentId) {
+                            console.log('🔄 Rechargement agent:', agentId);
+                            const timestamp = new Date().getTime();
+                            fetch('ajax/get_agent_details.php?id=' + agentId + '&_t=' + timestamp)
+                                .then(response => response.text())
+                                .then(html => {
+                                    modalBody.innerHTML = html;
+                                    // Revenir à la section Planning
+                                    setTimeout(() => {
+                                        showAgentSection('planning');
+                                        setTimeout(() => showPlanningSection('planning-agent'), 200);
+                                    }, 100);
+                                });
+                        }
+                    }
+                } else {
+                    alert('❌ ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('❌ Erreur:', error);
+                alert('Une erreur est survenue lors de la modification.');
+            });
+        }
+
+        function supprimerPlanningAgent(planningId) {
+            console.log('🗑️ Supprimer planning:', planningId);
+            
+            if (confirm('⚠️ Êtes-vous sûr de vouloir supprimer cette planification ?\n\nCette action ne peut pas être annulée.')) {
+                fetch('ajax/delete_planning.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        planning_id: planningId
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    console.log('📊 Résultat:', data);
+                    if (data.success) {
+                        alert('✅ ' + data.message);
+                        
+                        // Recharger les détails de l'agent
+                        const modalBody = document.getElementById('agentModalBody');
+                        if (modalBody) {
+                            const agentId = document.querySelector('#agentModalBody input[name="agent_id"]')?.value;
+                            if (agentId) {
+                                console.log('🔄 Rechargement agent:', agentId);
+                                const timestamp = new Date().getTime();
+                                fetch('ajax/get_agent_details.php?id=' + agentId + '&_t=' + timestamp)
+                                    .then(response => response.text())
+                                    .then(html => {
+                                        modalBody.innerHTML = html;
+                                        // Revenir à la section Planning
+                                        setTimeout(() => {
+                                            showAgentSection('planning');
+                                            setTimeout(() => showPlanningSection('planning-agent'), 200);
+                                        }, 100);
+                                    });
+                            }
+                        }
+                    } else {
+                        alert('❌ ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('❌ Erreur:', error);
+                    alert('Une erreur est survenue lors de la suppression.');
+                });
+            }
+        }
+        
+        console.log('✅ Fonctions planning prêtes');
     </script>
 </body>
 </html>

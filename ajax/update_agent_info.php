@@ -75,7 +75,7 @@ try {
         'date_recrutement' => sanitizeInput($_POST['date_recrutement'] ?? $current_agent['date_recrutement']),
         'structure_attache' => sanitizeInput($_POST['structure_attache'] ?? ''),
         'domaine_activites' => sanitizeInput($_POST['domaine_activites'] ?? ''),
-        'specialiste' => sanitizeInput($_POST['specialiste'] ?? ''),
+        'specialite' => sanitizeInput($_POST['specialite'] ?? ''),
         'grade' => sanitizeInput($_POST['grade'] ?? $current_agent['grade']),
         'date_nomination' => sanitizeInput($_POST['date_nomination'] ?? $current_agent['date_nomination']),
         'numero_badge' => sanitizeInput($_POST['numero_badge'] ?? $current_agent['numero_badge']),

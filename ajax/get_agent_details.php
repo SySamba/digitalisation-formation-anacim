@@ -97,8 +97,8 @@ $fichiers = $agent->getFichiersAgent($_GET['id']);
                             <td><?= htmlspecialchars($agent_data['domaine_activites'] ?? '') ?></td>
                         </tr>
                         <tr>
-                            <th>Spécialiste</th>
-                            <td><?= htmlspecialchars($agent_data['specialiste'] ?? '') ?></td>
+                            <th>Spécialité</th>
+                            <td><?= htmlspecialchars($agent_data['specialite'] ?? '') ?></td>
                         </tr>
                         <tr>
                             <th>Grade</th>
@@ -280,9 +280,16 @@ $fichiers = $agent->getFichiersAgent($_GET['id']);
             <h5 class="mb-3">Formations Non Effectuées</h5>
             
             <?php 
-            // Récupérer toutes les formations disponibles
-            $stmt_all_formations = $pdo->prepare("SELECT * FROM formations ORDER BY code");
-            $stmt_all_formations->execute();
+            // Récupérer toutes les formations disponibles avec le statut de planification
+            $stmt_all_formations = $pdo->prepare("
+                SELECT f.*, 
+                       (SELECT COUNT(*) FROM planning_formations pf 
+                        WHERE pf.agent_id = ? AND pf.formation_id = f.id 
+                        AND pf.statut IN ('planifie', 'confirme')) as est_planifie
+                FROM formations f 
+                ORDER BY f.code
+            ");
+            $stmt_all_formations->execute([$_GET['id']]);
             $all_formations = $stmt_all_formations->fetchAll();
             
             // Récupérer les IDs des formations déjà effectuées par cet agent
@@ -332,17 +339,50 @@ $fichiers = $agent->getFichiersAgent($_GET['id']);
                                     </thead>
                                     <tbody>
                                         <?php foreach ($formations_cat as $formation): ?>
+                                            <?php 
+                                            // Vérifier si c'est une formation SUR-FTS (peut être planifiée plusieurs fois)
+                                            $is_fts = strpos($formation['code'], 'SUR-FTS') !== false;
+                                            $est_planifie = isset($formation['est_planifie']) && $formation['est_planifie'] > 0;
+                                            ?>
                                             <tr class="formation-non-effectuee-row" data-category="<?= htmlspecialchars($formation['code']) ?>">
-                                                <td><?= htmlspecialchars($formation['intitule']) ?></td>
+                                                <td>
+                                                    <?= htmlspecialchars($formation['intitule']) ?>
+                                                    <?php if ($est_planifie): ?>
+                                                        <br><span class="badge bg-info mt-1">
+                                                            <i class="fas fa-calendar-check"></i> 
+                                                            <?php if ($is_fts): ?>
+                                                                Planifiée (<?= $formation['est_planifie'] ?> fois)
+                                                            <?php else: ?>
+                                                                Déjà planifiée
+                                                            <?php endif; ?>
+                                                        </span>
+                                                    <?php endif; ?>
+                                                </td>
                                                 <td>
                                                     <span class="badge bg-warning">
                                                         <i class="fas fa-exclamation-triangle"></i> Non effectuée
                                                     </span>
                                                 </td>
                                                 <td>
-                                                    <span class="text-muted">
-                                                        <i class="fas fa-info-circle"></i> Formation non effectuée
-                                                    </span>
+                                                    <?php if ($est_planifie && !$is_fts): ?>
+                                                        <button class="btn btn-sm btn-secondary" disabled title="Formation déjà planifiée - ne peut pas être re-planifiée">
+                                                            <i class="fas fa-ban"></i> Déjà planifié
+                                                        </button>
+                                                    <?php else: ?>
+                                                        <button class="btn btn-sm <?= $est_planifie ? 'btn-warning' : 'btn-primary' ?>" 
+                                                                onclick="planifierFormationAgent(<?= $_GET['id'] ?>, <?= $formation['id'] ?>);"
+                                                                title="<?= $est_planifie ? 'Formation SUR-FTS - peut être re-planifiée' : 'Planifier cette formation' ?>">
+                                                            <i class="fas fa-calendar-plus"></i> 
+                                                            <?php if ($est_planifie && $is_fts): ?>
+                                                                Re-planifier
+                                                            <?php else: ?>
+                                                                Planifier
+                                                            <?php endif; ?>
+                                                        </button>
+                                                        <?php if ($est_planifie && $is_fts): ?>
+                                                            <br><small class="text-warning mt-1">Formation technique - re-planifiable</small>
+                                                        <?php endif; ?>
+                                                    <?php endif; ?>
                                                 </td>
                                             </tr>
                                         <?php endforeach; ?>
@@ -721,6 +761,7 @@ $fichiers = $agent->getFichiersAgent($_GET['id']);
                             <label class="form-label">Centre de Formation <span class="text-danger">*</span></label>
                             <select name="centre_formation_prevu" class="form-select" required>
                                 <option value="">Sélectionner un centre</option>
+                                <option value="ANACIM">ANACIM</option>
                                 <?php foreach ($centres as $centre): ?>
                                     <option value="<?= htmlspecialchars($centre['nom']) ?>">
                                         <?= htmlspecialchars($centre['nom']) ?>
@@ -737,6 +778,35 @@ $fichiers = $agent->getFichiersAgent($_GET['id']);
                         <div class="col-md-6">
                             <label class="form-label">Date de Fin <span class="text-danger">*</span></label>
                             <input type="date" name="date_prevue_fin" class="form-control" required min="<?= date('Y-m-d') ?>">
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label class="form-label">Ville <span class="text-danger">*</span></label>
+                            <input type="text" name="ville" class="form-control" required placeholder="Ex: Dakar">
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label class="form-label">Pays <span class="text-danger">*</span></label>
+                            <input type="text" name="pays" class="form-control" required placeholder="Ex: Sénégal">
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <label class="form-label">Durée (jours) <span class="text-danger">*</span></label>
+                            <input type="number" name="duree" class="form-control" required min="1" placeholder="Ex: 5">
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <label class="form-label">Perdiem (FCFA)</label>
+                            <input type="number" name="perdiem" class="form-control" step="0.01" min="0" placeholder="Ex: 50000">
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <label class="form-label">Priorité <span class="text-danger">*</span></label>
+                            <select name="priorite" class="form-select" required>
+                                <option value="1">1 - Très élevé</option>
+                                <option value="2">2 - Moyen</option>
+                                <option value="3" selected>3 - Moins élevé</option>
+                            </select>
                         </div>
                         
                         <div class="col-md-6">
@@ -858,7 +928,11 @@ $fichiers = $agent->getFichiersAgent($_GET['id']);
                                                     <tr>
                                                         <th>Formation</th>
                                                         <th>Centre</th>
+                                                        <th>Lieu</th>
                                                         <th>Dates</th>
+                                                        <th>Durée</th>
+                                                        <th>Perdiem</th>
+                                                        <th>Priorité</th>
                                                         <th>Statut</th>
                                                         <th>Actions</th>
                                                     </tr>
@@ -872,8 +946,32 @@ $fichiers = $agent->getFichiersAgent($_GET['id']);
                                                             </td>
                                                             <td><?= htmlspecialchars($planning['centre_nom'] ?? $planning['centre_formation_prevu']) ?></td>
                                                             <td>
-                                                                Du <?= date('d/m/Y', strtotime($planning['date_prevue_debut'])) ?><br>
-                                                                au <?= date('d/m/Y', strtotime($planning['date_prevue_fin'])) ?>
+                                                                <i class="fas fa-map-marker-alt"></i> <?= htmlspecialchars($planning['ville']) ?><br>
+                                                                <small class="text-muted"><?= htmlspecialchars($planning['pays']) ?></small>
+                                                            </td>
+                                                            <td>
+                                                                <small>
+                                                                    Du <?= date('d/m/Y', strtotime($planning['date_prevue_debut'])) ?><br>
+                                                                    au <?= date('d/m/Y', strtotime($planning['date_prevue_fin'])) ?>
+                                                                </small>
+                                                            </td>
+                                                            <td>
+                                                                <span class="badge bg-info"><?= $planning['duree'] ?> j</span>
+                                                            </td>
+                                                            <td>
+                                                                <?php if (!empty($planning['perdiem'])): ?>
+                                                                    <small><?= number_format($planning['perdiem'], 0, ',', ' ') ?> FCFA</small>
+                                                                <?php else: ?>
+                                                                    <small class="text-muted">-</small>
+                                                                <?php endif; ?>
+                                                            </td>
+                                                            <td>
+                                                                <span class="badge <?= 
+                                                                    $planning['priorite'] == '1' ? 'bg-danger' : 
+                                                                    ($planning['priorite'] == '2' ? 'bg-warning' : 'bg-secondary') 
+                                                                ?>">
+                                                                    <?= $planning['priorite'] == '1' ? 'Très élevé' : ($planning['priorite'] == '2' ? 'Moyen' : 'Moins élevé') ?>
+                                                                </span>
                                                             </td>
                                                             <td>
                                                                 <span class="badge <?= 
@@ -1266,35 +1364,67 @@ function supprimerPlanningAgent(planningId) {
 
 // Fonction globale pour initialiser les event listeners du planning
 function initializePlanningEventListeners() {
-    console.log('Initializing planning event listeners...');
+    console.log('🔧 Initializing planning event listeners...');
     
     // Attendre un peu pour s'assurer que les éléments sont dans le DOM
     setTimeout(() => {
         const planificationFormAgent = document.getElementById('planificationFormAgent');
-        console.log('Planning form found:', !!planificationFormAgent);
+        console.log('📝 Planning form found:', !!planificationFormAgent);
         
-        if (planificationFormAgent && !planificationFormAgent.hasAttribute('data-listener-added')) {
+        if (planificationFormAgent) {
+            // Supprimer l'ancien listener s'il existe
+            const oldListener = planificationFormAgent.getAttribute('data-listener-added');
+            if (oldListener) {
+                console.log('🔄 Removing old listener...');
+                planificationFormAgent.removeAttribute('data-listener-added');
+            }
+            
             planificationFormAgent.setAttribute('data-listener-added', 'true');
             planificationFormAgent.addEventListener('submit', function(e) {
+                console.log('📤 Form submission started...');
                 e.preventDefault();
                 
                 const submitBtn = this.querySelector('button[type="submit"]');
                 const originalText = submitBtn.innerHTML;
+                
+                // Validation des champs obligatoires
+                const requiredFields = ['formation_id', 'centre_formation_prevu', 'date_prevue_debut', 'date_prevue_fin', 'ville', 'pays', 'duree', 'priorite'];
+                let missingFields = [];
+                
+                requiredFields.forEach(field => {
+                    const input = this.querySelector(`[name="${field}"]`);
+                    if (!input || !input.value.trim()) {
+                        missingFields.push(field);
+                    }
+                });
+                
+                if (missingFields.length > 0) {
+                    alert('❌ Champs obligatoires manquants: ' + missingFields.join(', '));
+                    return;
+                }
                 
                 // Validation des dates
                 const dateDebut = new Date(this.querySelector('input[name="date_prevue_debut"]').value);
                 const dateFin = new Date(this.querySelector('input[name="date_prevue_fin"]').value);
                 
                 if (dateFin <= dateDebut) {
-                    alert('La date de fin doit être postérieure à la date de début.');
+                    alert('❌ La date de fin doit être postérieure à la date de début.');
                     return;
                 }
+                
+                console.log('✅ Validation passed, submitting...');
                 
                 // Désactiver le bouton
                 submitBtn.disabled = true;
                 submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Planification...';
                 
                 const formData = new FormData(this);
+                
+                // Debug: afficher les données envoyées
+                console.log('📋 Form data:');
+                for (let [key, value] of formData.entries()) {
+                    console.log(`  ${key}: ${value}`);
+                }
                 
                 fetch('ajax/save_planning.php', {
                     method: 'POST',
@@ -1311,8 +1441,8 @@ function initializePlanningEventListeners() {
                         const dateDebut = document.querySelector('#planifier-agent input[name="date_prevue_debut"]').value;
                         const dateFin = document.querySelector('#planifier-agent input[name="date_prevue_fin"]').value;
                         
-                        // Message simple et clair pour l'utilisateur
-                        alert(`✅ PLANNING AVEC SUCCÈS !
+                        // Message de succès
+                        alert(`✅ PLANNING ENREGISTRÉ AVEC SUCCÈS !
 
 📚 Formation : ${formationText}
 🏢 Centre : ${centreText}
@@ -1320,32 +1450,45 @@ function initializePlanningEventListeners() {
 
 La formation a été ajoutée au planning de l'agent.`);
                         
-                        // Réinitialiser le formulaire
-                        form.reset();
+                        // Réinitialiser le formulaire (this au lieu de form)
+                        planificationFormAgent.reset();
                         submitBtn.innerHTML = originalText;
                         submitBtn.disabled = false;
                         submitBtn.className = 'btn btn-primary';
                         
-                        // Naviguer vers la section Planning Existant
-                        setTimeout(() => {
-                            // Aller à la section Planning
-                            showAgentSection('planning');
+                        // Récupérer l'ID de l'agent
+                        const agentId = formData.get('agent_id');
+                        
+                        // Recharger complètement les détails de l'agent
+                        if (agentId) {
+                            // Fermer et rouvrir la modal pour forcer le rechargement
+                            const modal = bootstrap.Modal.getInstance(document.getElementById('agentModal'));
+                            if (modal) {
+                                modal.hide();
+                            }
                             
-                            // Puis aller à Planning Existant
+                            // Attendre que la modal soit fermée, puis la rouvrir
                             setTimeout(() => {
-                                showPlanningSection('planning-agent');
-                                
-                                // Recharger les détails de l'agent pour voir le nouveau planning
-                                const agentId = formData.get('agent_id');
-                                if (agentId) {
-                                    if (typeof loadAgentDetails === 'function') {
-                                        loadAgentDetails(agentId);
-                                    } else if (typeof viewAgent === 'function') {
-                                        viewAgent(agentId);
-                                    }
+                                // Recharger les détails de l'agent
+                                if (typeof window.parent.viewAgent === 'function') {
+                                    window.parent.viewAgent(agentId);
+                                } else if (typeof viewAgent === 'function') {
+                                    viewAgent(agentId);
+                                } else {
+                                    // En dernier recours, recharger via AJAX
+                                    fetch('ajax/get_agent_details.php?id=' + agentId)
+                                        .then(response => response.text())
+                                        .then(html => {
+                                            document.querySelector('#agentModal .modal-body').innerHTML = html;
+                                            // Aller directement à la section Planning Existant
+                                            setTimeout(() => {
+                                                showAgentSection('planning');
+                                                setTimeout(() => showPlanningSection('planning-agent'), 200);
+                                            }, 300);
+                                        });
                                 }
-                            }, 300);
-                        }, 500);
+                            }, 500);
+                        }
                     } else {
                         submitBtn.innerHTML = originalText;
                         submitBtn.disabled = false;
@@ -1591,4 +1734,7 @@ function deleteDiplome(diplomeId) {
         console.log('Supprimer diplôme:', diplomeId);
     }
 }
+
+// Le gestionnaire de planification est maintenant dans admin.php
+// pour éviter les problèmes de chargement dynamique via AJAX
 </script>

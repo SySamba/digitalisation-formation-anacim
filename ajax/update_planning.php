@@ -24,12 +24,18 @@ try {
     $centre_formation_prevu = $_POST['centre_formation_prevu'] ?? '';
     $date_prevue_debut = $_POST['date_prevue_debut'] ?? '';
     $date_prevue_fin = $_POST['date_prevue_fin'] ?? '';
+    $ville = $_POST['ville'] ?? '';
+    $pays = $_POST['pays'] ?? '';
+    $duree = $_POST['duree'] ?? '';
+    $perdiem = $_POST['perdiem'] ?? null;
+    $priorite = $_POST['priorite'] ?? '3';
     $statut = $_POST['statut'] ?? 'planifie';
     $commentaires = $_POST['commentaires'] ?? '';
     
     // Validation
     if (empty($planning_id) || empty($centre_formation_prevu) || 
-        empty($date_prevue_debut) || empty($date_prevue_fin)) {
+        empty($date_prevue_debut) || empty($date_prevue_fin) ||
+        empty($ville) || empty($pays) || empty($duree) || empty($priorite)) {
         echo json_encode(['success' => false, 'message' => 'Tous les champs obligatoires doivent être remplis']);
         exit;
     }
@@ -55,7 +61,12 @@ try {
         UPDATE planning_formations 
         SET date_prevue_debut = ?, 
             date_prevue_fin = ?, 
-            centre_formation_prevu = ?, 
+            centre_formation_prevu = ?,
+            ville = ?,
+            pays = ?,
+            duree = ?,
+            perdiem = ?,
+            priorite = ?,
             statut = ?, 
             commentaires = ?,
             updated_at = NOW()
@@ -66,6 +77,11 @@ try {
         $date_prevue_debut,
         $date_prevue_fin,
         $centre_formation_prevu,
+        $ville,
+        $pays,
+        $duree,
+        $perdiem,
+        $priorite,
         $statut,
         $commentaires,
         $planning_id

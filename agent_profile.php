@@ -184,9 +184,9 @@ foreach ($formations as $f) {
                             </div>
                             <div class="col-md-6">
                                 <div class="mb-3">
-                                    <label for="specialiste" class="form-label">Spécialiste</label>
-                                    <input type="text" class="form-control" id="specialiste" name="specialiste" 
-                                           value="<?= htmlspecialchars($agent_data['specialiste'] ?? '') ?>">
+                                    <label for="specialite" class="form-label">Spécialité</label>
+                                    <input type="text" class="form-control" id="specialite" name="specialite" 
+                                           value="<?= htmlspecialchars($agent_data['specialite'] ?? '') ?>">
                                 </div>
                             </div>
                         </div>

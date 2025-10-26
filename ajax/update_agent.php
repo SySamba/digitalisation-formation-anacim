@@ -65,7 +65,7 @@ try {
         'date_recrutement' => $_POST['date_recrutement'],
         'structure_attache' => sanitizeInput($_POST['structure_attache'] ?? ''),
         'domaine_activites' => sanitizeInput($_POST['domaine_activites'] ?? ''),
-        'specialiste' => sanitizeInput($_POST['specialiste'] ?? ''),
+        'specialite' => sanitizeInput($_POST['specialite'] ?? ''),
         'grade' => $_POST['grade'],
         'date_nomination' => $_POST['date_nomination'] ?? null,
         'numero_badge' => sanitizeInput($_POST['numero_badge'] ?? ''),

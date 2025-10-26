@@ -61,7 +61,9 @@ function getGradeLabel($grade) {
         'agent_technique' => 'Agent Technique',
         'inspecteur_stagiaire' => 'Inspecteur Stagiaire',
         'inspecteur_titulaire' => 'Inspecteur Titulaire',
-        'inspecteur_principal' => 'Inspecteur Principal'
+        'inspecteur_principal' => 'Inspecteur Principal',
+        'verificateur_stagiaire' => 'Vérificateur Stagiaire',
+        'verificateur_titulaire' => 'Vérificateur Titulaire'
     ];
     
     return $grades[$grade] ?? $grade;

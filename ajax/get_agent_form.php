@@ -40,6 +40,8 @@ if (isset($_GET['id'])) {
                     <option value="inspecteur_stagiaire" <?= $is_edit && $agent_data['grade'] === 'inspecteur_stagiaire' ? 'selected' : '' ?>>Inspecteur Stagiaire</option>
                     <option value="inspecteur_titulaire" <?= $is_edit && $agent_data['grade'] === 'inspecteur_titulaire' ? 'selected' : '' ?>>Inspecteur Titulaire</option>
                     <option value="inspecteur_principal" <?= $is_edit && $agent_data['grade'] === 'inspecteur_principal' ? 'selected' : '' ?>>Inspecteur Principal</option>
+                    <option value="verificateur_stagiaire" <?= $is_edit && $agent_data['grade'] === 'verificateur_stagiaire' ? 'selected' : '' ?>>Vérificateur Stagiaire</option>
+                    <option value="verificateur_titulaire" <?= $is_edit && $agent_data['grade'] === 'verificateur_titulaire' ? 'selected' : '' ?>>Vérificateur Titulaire</option>
                 </select>
             </div>
         </div>
@@ -89,9 +91,9 @@ if (isset($_GET['id'])) {
         </div>
         <div class="col-md-6">
             <div class="mb-3">
-                <label for="specialiste" class="form-label">Spécialiste</label>
-                <input type="text" class="form-control" id="specialiste" name="specialiste" 
-                       value="<?= $is_edit ? htmlspecialchars($agent_data['specialiste'] ?? '') : '' ?>">
+                <label for="specialite" class="form-label">Spécialité</label>
+                <input type="text" class="form-control" id="specialite" name="specialite" 
+                       value="<?= $is_edit ? htmlspecialchars($agent_data['specialite'] ?? '') : '' ?>">
             </div>
         </div>
     </div>

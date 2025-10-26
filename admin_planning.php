@@ -21,10 +21,33 @@ $stmt = $db->prepare("SELECT * FROM agents ORDER BY nom, prenom");
 $stmt->execute();
 $agents = $stmt->fetchAll();
 
-// Récupérer les formations
-$stmt = $db->prepare("SELECT id, code, intitule, categorie, periodicite_mois FROM formations ORDER BY categorie, intitule");
+// Récupérer les formations - DEBUG: Vérifier si toutes les formations sont récupérées
+$stmt = $db->prepare("SELECT id, code, intitule, categorie, periodicite_mois FROM formations ORDER BY id");
 $stmt->execute();
 $formations = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// DEBUG: Afficher le nombre de formations récupérées
+echo "<!-- DEBUG: Nombre de formations récupérées: " . count($formations) . " -->\n";
+echo "<!-- DEBUG: Première formation ID: " . ($formations[0]['id'] ?? 'AUCUNE') . " -->\n";
+echo "<!-- DEBUG: Dernière formation ID: " . (end($formations)['id'] ?? 'AUCUNE') . " -->\n";
+
+// DEBUG: Vérifier si la formation ID=4 existe
+$formation_4_exists = false;
+foreach ($formations as $f) {
+    if ($f['id'] == 4) {
+        $formation_4_exists = true;
+        echo "<!-- DEBUG: Formation ID=4 trouvée: " . $f['code'] . " - " . $f['intitule'] . " -->\n";
+        break;
+    }
+}
+if (!$formation_4_exists) {
+    echo "<!-- DEBUG: Formation ID=4 NON TROUVÉE dans les " . count($formations) . " formations -->\n";
+    // Afficher les 10 premières formations pour debug
+    echo "<!-- DEBUG: Premières formations: -->\n";
+    for ($i = 0; $i < min(10, count($formations)); $i++) {
+        echo "<!-- DEBUG: Formation " . $i . ": ID=" . $formations[$i]['id'] . ", Code=" . $formations[$i]['code'] . " -->\n";
+    }
+}
 
 // Récupérer les centres de formation (avec fallback si la table n'existe pas)
 try {
@@ -225,14 +248,17 @@ $planning_existant = $stmt->fetchAll();
 
         <?php
         // Gestion des paramètres URL pour la pré-sélection
-        $preselect_agent = $_GET['agent_id'] ?? '';
-        $preselect_formation = $_GET['formation_id'] ?? '';
+        $preselect_agent = isset($_GET['agent_id']) ? intval($_GET['agent_id']) : '';
+        $preselect_formation = isset($_GET['formation_id']) ? intval($_GET['formation_id']) : '';
         $preselect_section = $_GET['section'] ?? '';
         
-        // Debug
-        if (!empty($preselect_formation)) {
-            echo "<!-- DEBUG: preselect_formation = $preselect_formation -->";
-        }
+        // Debug avancé
+        echo "<!-- DEBUG URL Parameters: -->";
+        echo "<!-- agent_id = " . htmlspecialchars($preselect_agent) . " -->";
+        echo "<!-- formation_id = " . htmlspecialchars($preselect_formation) . " -->";
+        echo "<!-- section = " . htmlspecialchars($preselect_section) . " -->";
+        echo "<!-- URL complète: " . htmlspecialchars($_SERVER['REQUEST_URI'] ?? '') . " -->";
+        
         ?>
 
         <!-- Section Besoins de Formation -->
@@ -314,30 +340,45 @@ $planning_existant = $stmt->fetchAll();
                                                         <?php 
                                                         $priorite_class = '';
                                                         $priorite_label = '';
-                                                        if ($besoin['jours_restants'] <= 0) {
+                                                        $type_badge = '';
+                                                        
+                                                        if ($besoin['type_besoin'] == 'non_effectuee') {
+                                                            $priorite_class = 'besoin-normal';
+                                                            $priorite_label = 'Non effectuée';
+                                                            $type_badge = '<span class="badge bg-secondary ms-2">Jamais effectuée</span>';
+                                                        } elseif ($besoin['jours_restants'] <= 0) {
                                                             $priorite_class = 'besoin-urgent';
                                                             $priorite_label = 'URGENT';
+                                                            $type_badge = '<span class="badge bg-danger ms-2">À renouveler</span>';
                                                         } elseif ($besoin['jours_restants'] <= 30) {
                                                             $priorite_class = 'besoin-important';
                                                             $priorite_label = 'Important';
+                                                            $type_badge = '<span class="badge bg-warning text-dark ms-2">À renouveler</span>';
                                                         } else {
                                                             $priorite_class = 'besoin-normal';
                                                             $priorite_label = 'Normal';
+                                                            $type_badge = '<span class="badge bg-info ms-2">À renouveler</span>';
                                                         }
                                                         ?>
                                                         <tr class="<?= $priorite_class ?>">
                                                             <td>
-                                                                <strong><?= htmlspecialchars($besoin['code']) ?></strong><br>
+                                                                <strong><?= htmlspecialchars($besoin['code']) ?></strong>
+                                                                <?= $type_badge ?><br>
                                                                 <small><?= htmlspecialchars($besoin['intitule']) ?></small>
                                                             </td>
                                                             <td>
-                                                                <?= date('d/m/Y', strtotime($besoin['echeance_prevue'])) ?><br>
-                                                                <small class="text-muted">
-                                                                    <?= $besoin['jours_restants'] <= 0 ? 'Échue' : $besoin['jours_restants'] . ' jours' ?>
-                                                                </small>
+                                                                <?php if ($besoin['type_besoin'] == 'non_effectuee'): ?>
+                                                                    <span class="text-muted">-</span><br>
+                                                                    <small class="text-muted">Jamais effectuée</small>
+                                                                <?php else: ?>
+                                                                    <?= date('d/m/Y', strtotime($besoin['echeance_prevue'])) ?><br>
+                                                                    <small class="text-muted">
+                                                                        <?= $besoin['jours_restants'] <= 0 ? 'Échue' : $besoin['jours_restants'] . ' jours' ?>
+                                                                    </small>
+                                                                <?php endif; ?>
                                                             </td>
                                                             <td>
-                                                                <span class="badge <?= $besoin['jours_restants'] <= 0 ? 'bg-danger' : ($besoin['jours_restants'] <= 30 ? 'bg-warning' : 'bg-success') ?>">
+                                                                <span class="badge <?= $besoin['type_besoin'] == 'non_effectuee' ? 'bg-secondary' : ($besoin['jours_restants'] <= 0 ? 'bg-danger' : ($besoin['jours_restants'] <= 30 ? 'bg-warning' : 'bg-success')) ?>">
                                                                     <?= $priorite_label ?>
                                                                 </span>
                                                             </td>
@@ -368,6 +409,14 @@ $planning_existant = $stmt->fetchAll();
                     <h5><i class="fas fa-calendar-plus"></i> Planifier une Formation</h5>
                 </div>
                 <div class="card-body">
+                    <?php if (!empty($preselect_agent) && !empty($preselect_formation)): ?>
+                        <div class="alert alert-info alert-dismissible fade show" role="alert">
+                            <i class="fas fa-info-circle"></i> <strong>Pré-sélection active :</strong> 
+                            L'agent et la formation ont été automatiquement sélectionnés. 
+                            Remplissez les autres champs pour planifier cette formation.
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    <?php endif; ?>
                     <form id="planificationForm">
                         <div class="row">
                             <div class="col-md-4">
@@ -382,21 +431,31 @@ $planning_existant = $stmt->fetchAll();
                                 </select>
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label">Formation *</label>
-                                <select class="form-select" name="formation_id" required>
+                                <label class="form-label">Formation * 
+                                    <?php if ($preselect_formation): ?>
+                                        <span style="background: yellow; padding: 2px 8px; font-size: 12px; border-radius: 3px;">
+                                            Pré-sélection: ID <?= $preselect_formation ?>
+                                        </span>
+                                    <?php endif; ?>
+                                </label>
+                                <select class="form-select" name="formation_id" required id="formation_dropdown">
                                     <option value="">Sélectionner une formation...</option>
                                     <?php 
+                                    // DEBUG: Afficher la structure d'une formation
                                     if (!empty($formations)) {
-                                        foreach ($formations as $formation) {
-                                            $id = htmlspecialchars($formation['id'] ?? '');
-                                            $code = htmlspecialchars($formation['code'] ?? '');
-                                            $intitule = htmlspecialchars($formation['intitule'] ?? '');
-                                            $selected = (strval($preselect_formation) === strval($id)) ? 'selected' : '';
-                                            echo "<!-- Formation ID: $id, Preselect: $preselect_formation, Selected: $selected -->\n";
-                                            ?>
-                                            <option value="<?= $id ?>" <?= $selected ?>><?= $code ?> - <?= $intitule ?></option>
-                                            <?php
-                                        }
+                                        echo "<!-- DEBUG: Structure formation: " . print_r($formations[0], true) . " -->\n";
+                                    }
+                                    
+                                    foreach ($formations as $formation) {
+                                        // Essayer différentes clés possibles
+                                        $fid = $formation['id'] ?? $formation['formation_id'] ?? '';
+                                        echo "<!-- DEBUG: formation keys: " . implode(', ', array_keys($formation)) . " -->\n";
+                                        echo "<!-- DEBUG: fid = '$fid' -->\n";
+                                        
+                                        $is_match = ($preselect_formation !== '' && $preselect_formation == $fid);
+                                        $selected = $is_match ? 'selected' : '';
+                                        
+                                        echo "<option value='$fid' $selected>" . htmlspecialchars($formation['code'] ?? 'NO_CODE') . " - " . htmlspecialchars($formation['intitule'] ?? 'NO_TITLE') . "</option>\n";
                                     }
                                     ?>
                                 </select>
@@ -424,25 +483,54 @@ $planning_existant = $stmt->fetchAll();
                                 <input type="date" class="form-control" name="date_prevue_fin" required>
                             </div>
                             <div class="col-md-3">
+                                <label class="form-label">Ville *</label>
+                                <input type="text" class="form-control" name="ville" required placeholder="Ex: Dakar">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Pays *</label>
+                                <input type="text" class="form-control" name="pays" required placeholder="Ex: Sénégal">
+                            </div>
+                        </div>
+                        
+                        <div class="row mt-3">
+                            <div class="col-md-3">
+                                <label class="form-label">Durée (jours) *</label>
+                                <input type="number" class="form-control" name="duree" required min="1" placeholder="Ex: 5">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Perdiem (FCFA)</label>
+                                <input type="number" class="form-control" name="perdiem" step="0.01" min="0" placeholder="Ex: 50000">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Priorité *</label>
+                                <select class="form-select" name="priorite" required>
+                                    <option value="1">1 - Très élevé</option>
+                                    <option value="2">2 - Moyen</option>
+                                    <option value="3" selected>3 - Moins élevé</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
                                 <label class="form-label">Statut</label>
                                 <select class="form-select" name="statut">
                                     <option value="planifie">Planifié</option>
                                     <option value="confirme">Confirmé</option>
                                 </select>
                             </div>
-                            <div class="col-md-3">
-                                <label class="form-label">&nbsp;</label>
-                                <button type="submit" class="btn btn-primary d-block w-100">
-                                    <i class="fas fa-save"></i> Planifier
-                                </button>
-                            </div>
                         </div>
                         
                         <div class="row mt-3">
                             <div class="col-12">
                                 <label class="form-label">Commentaires</label>
-                                <textarea class="form-control" name="commentaires" rows="3" 
+                                <textarea class="form-control" name="commentaires" rows="2" 
                                           placeholder="Commentaires optionnels sur cette planification..."></textarea>
+                            </div>
+                        </div>
+                        
+                        <div class="row mt-3">
+                            <div class="col-12 text-center">
+                                <button type="submit" class="btn btn-primary btn-lg">
+                                    <i class="fas fa-save"></i> Planifier la Formation
+                                </button>
                             </div>
                         </div>
                     </form>
@@ -536,7 +624,10 @@ $planning_existant = $stmt->fetchAll();
                                                     <tr>
                                                         <th>Formation</th>
                                                         <th>Centre</th>
+                                                        <th>Lieu</th>
                                                         <th>Dates</th>
+                                                        <th>Durée</th>
+                                                        <th>Priorité</th>
                                                         <th>Statut</th>
                                                         <th>Actions</th>
                                                     </tr>
@@ -550,8 +641,23 @@ $planning_existant = $stmt->fetchAll();
                                                             </td>
                                                             <td><?= htmlspecialchars($planning['centre_nom'] ?? $planning['centre_formation_prevu']) ?></td>
                                                             <td>
+                                                                <?= htmlspecialchars($planning['ville'] ?? '-') ?>, 
+                                                                <?= htmlspecialchars($planning['pays'] ?? '-') ?>
+                                                            </td>
+                                                            <td>
                                                                 Du <?= date('d/m/Y', strtotime($planning['date_prevue_debut'])) ?><br>
                                                                 au <?= date('d/m/Y', strtotime($planning['date_prevue_fin'])) ?>
+                                                            </td>
+                                                            <td><?= htmlspecialchars($planning['duree'] ?? '-') ?> jour(s)</td>
+                                                            <td>
+                                                                <?php 
+                                                                $priorite_badges = [
+                                                                    '1' => '<span class="badge bg-danger">1 - Très élevé</span>',
+                                                                    '2' => '<span class="badge bg-warning text-dark">2 - Moyen</span>',
+                                                                    '3' => '<span class="badge bg-info">3 - Moins élevé</span>'
+                                                                ];
+                                                                echo $priorite_badges[$planning['priorite'] ?? '3'] ?? '-';
+                                                                ?>
                                                             </td>
                                                             <td>
                                                                 <span class="badge <?= 
@@ -625,6 +731,178 @@ $planning_existant = $stmt->fetchAll();
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        // FORCER LA SÉLECTION DE LA FORMATION
+        document.addEventListener('DOMContentLoaded', function() {
+            const formationDropdown = document.getElementById('formation_dropdown');
+            const agentDropdown = document.querySelector('select[name="agent_id"]');
+            
+            // Fonction pour pré-sélectionner une formation
+            function preselectFormation(formationId) {
+                console.log('🔍 preselectFormation appelée avec ID:', formationId);
+                
+                if (!formationDropdown) {
+                    console.error('❌ formationDropdown non trouvé');
+                    return;
+                }
+                
+                if (!formationId) {
+                    console.error('❌ formationId vide');
+                    return;
+                }
+                
+                console.log('=== DEBUG FORMATIONS ===');
+                const allOptions = formationDropdown.querySelectorAll('option');
+                console.log('Nombre total d\'options:', allOptions.length);
+                
+                allOptions.forEach(function(option, index) {
+                    console.log(`Option ${index}: value="${option.value}", text="${option.text}"`);
+                });
+                
+                // Chercher l'option avec la valeur
+                const targetOption = formationDropdown.querySelector(`option[value="${formationId}"]`);
+                console.log('Option cible trouvée:', targetOption);
+                
+                if (targetOption) {
+                    console.log('✅ Option trouvée, tentative de sélection...');
+                    
+                    // Méthode 1: Sélection directe
+                    formationDropdown.value = formationId;
+                    console.log('Méthode 1 - Valeur après sélection:', formationDropdown.value);
+                    
+                    // Méthode 2: Sélection par index si la méthode 1 échoue
+                    if (formationDropdown.value !== formationId) {
+                        console.log('Méthode 1 échouée, essai méthode 2...');
+                        targetOption.selected = true;
+                        console.log('Méthode 2 - Valeur après sélection:', formationDropdown.value);
+                    }
+                    
+                    // Méthode 3: Forcer par selectedIndex si les autres échouent
+                    if (formationDropdown.value !== formationId) {
+                        console.log('Méthode 2 échouée, essai méthode 3...');
+                        for (let i = 0; i < formationDropdown.options.length; i++) {
+                            if (formationDropdown.options[i].value === formationId) {
+                                formationDropdown.selectedIndex = i;
+                                console.log('Méthode 3 - Index sélectionné:', i);
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // Méthode 4: Forcer avec parseInt pour gérer les types
+                    if (formationDropdown.value !== formationId) {
+                        console.log('Méthode 3 échouée, essai méthode 4 avec parseInt...');
+                        for (let i = 0; i < formationDropdown.options.length; i++) {
+                            const option = formationDropdown.options[i];
+                            if (parseInt(option.value) === parseInt(formationId)) {
+                                formationDropdown.selectedIndex = i;
+                                option.selected = true;
+                                console.log('Méthode 4 - Formation sélectionnée à l\'index:', i, 'value:', option.value);
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // Vérification finale
+                    setTimeout(function() {
+                        console.log('🔍 Vérification finale...');
+                        console.log('Valeur actuelle du dropdown:', formationDropdown.value);
+                        console.log('Valeur attendue:', formationId);
+                        console.log('Index sélectionné:', formationDropdown.selectedIndex);
+                        console.log('Option sélectionnée:', formationDropdown.options[formationDropdown.selectedIndex]);
+                        
+                        if (formationDropdown.value === formationId || formationDropdown.value == formationId) {
+                            console.log('✅ Formation sélectionnée avec succès');
+                            const currentTargetOption = formationDropdown.querySelector(`option[value="${formationId}"]`);
+                            if (currentTargetOption) {
+                                currentTargetOption.style.backgroundColor = '#90EE90';
+                                currentTargetOption.style.fontWeight = 'bold';
+                            }
+                        } else {
+                            console.log('❌ TOUTES les méthodes ont échoué');
+                            console.log('Valeur actuelle:', formationDropdown.value, '(type:', typeof formationDropdown.value, ')');
+                            console.log('Valeur attendue:', formationId, '(type:', typeof formationId, ')');
+                        }
+                    }, 200);
+                } else {
+                    console.log('❌ Option avec value="' + formationId + '" NON TROUVÉE');
+                    console.log('Formation ID=' + formationId + ' non trouvée dans le dropdown');
+                    console.log('IDs disponibles:', Array.from(allOptions).map(opt => opt.value).filter(v => v !== ''));
+                    
+                    // Essayer de trouver avec une comparaison flexible (== au lieu de ===)
+                    console.log('🔍 Recherche avec comparaison flexible...');
+                    const foundOption = Array.from(allOptions).find(opt => 
+                        opt.value == formationId || parseInt(opt.value) === parseInt(formationId)
+                    );
+                    
+                    if (foundOption) {
+                        console.log('✅ Option trouvée par comparaison flexible:', foundOption.value, foundOption.text);
+                        formationDropdown.value = foundOption.value;
+                        foundOption.selected = true;
+                    } else {
+                        console.log('❌ Formation vraiment introuvable. La formation n\'existe probablement pas dans la base.');
+                    }
+                }
+            }
+            
+            // Pré-sélection depuis les paramètres URL
+            <?php if (!empty($preselect_formation)): ?>
+            // Chercher la formation correspondante dans le dropdown
+            const targetFormationId = '<?= $preselect_formation ?>';
+            
+            setTimeout(() => {
+                const formationSelect = document.getElementById('formation_dropdown');
+                if (formationSelect) {
+                    console.log('Pré-sélection URL: Formation ID =', targetFormationId);
+                    
+                    // Chercher directement par ID (méthode simple et universelle)
+                    const foundOption = Array.from(formationSelect.options).find(opt => 
+                        opt.value === targetFormationId || opt.value == targetFormationId
+                    );
+                    
+                    if (foundOption) {
+                        formationSelect.value = foundOption.value;
+                        foundOption.selected = true;
+                        console.log('✅ Formation pré-sélectionnée:', foundOption.text);
+                        
+                        // Highlight visuel temporaire
+                        formationSelect.style.backgroundColor = '#e8f5e9';
+                        setTimeout(() => {
+                            formationSelect.style.backgroundColor = '';
+                        }, 2000);
+                    } else {
+                        console.log('❌ Formation ID=' + targetFormationId + ' non trouvée dans le dropdown');
+                        console.log('IDs disponibles:', Array.from(formationSelect.options).map(o => o.value).filter(v => v).slice(0, 20));
+                        
+                        // Afficher un message d'alerte à l'utilisateur
+                        const alertDiv = document.createElement('div');
+                        alertDiv.className = 'alert alert-warning alert-dismissible fade show';
+                        alertDiv.innerHTML = `
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <strong>Attention:</strong> La formation demandée (ID=${targetFormationId}) n'existe pas dans la liste.
+                            Veuillez sélectionner manuellement la formation.
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        `;
+                        
+                        const planifierCard = document.querySelector('#planifier .card-body');
+                        if (planifierCard) {
+                            planifierCard.insertBefore(alertDiv, planifierCard.firstChild);
+                        }
+                    }
+                }
+            }, 100);
+            <?php endif; ?>
+            
+            // Forcer la sélection de l'agent
+            <?php if (!empty($preselect_agent)): ?>
+            if (agentDropdown) {
+                agentDropdown.value = '<?= $preselect_agent ?>';
+                console.log('Agent forcé à ID: <?= $preselect_agent ?>');
+            }
+            <?php endif; ?>
+            
+            // Exposer la fonction globalement pour les boutons Planifier
+            window.preselectFormation = preselectFormation;
+        });
         function showSection(sectionId) {
             // Masquer toutes les sections
             document.querySelectorAll('.planning-section').forEach(section => {
@@ -649,57 +927,58 @@ $planning_existant = $stmt->fetchAll();
         }
 
         function planifierFormation(agentId, formationId) {
-            console.log('planifierFormation called with:', agentId, formationId);
-            
-            // Passer à la section planification et pré-remplir les champs
+            // Passer à la section planification
             showSection('planifier');
             
+            // Attendre que la section soit bien chargée
             setTimeout(() => {
                 const agentSelect = document.querySelector('select[name="agent_id"]');
                 const formationSelect = document.querySelector('select[name="formation_id"]');
                 
-                console.log('Elements found:', !!agentSelect, !!formationSelect);
-                
+                // Pré-sélectionner l'agent
                 if (agentSelect) {
                     agentSelect.value = String(agentId);
-                    console.log('Agent - Expected:', agentId, 'Set to:', agentSelect.value, 'Match:', agentSelect.value == agentId);
                 }
                 
-                if (formationSelect) {
-                    // Essayer différents formats de valeur
+                // Pré-sélectionner la formation
+                if (formationSelect && formationId) {
+                    console.log('=== DEBUG PLANIFIER ===');
+                    console.log('Formation ID à chercher:', formationId);
+                    
+                    const allOptions = formationSelect.querySelectorAll('option');
+                    console.log('Nombre d\'options dans le dropdown:', allOptions.length);
+                    
+                    // Méthode 1: Chercher par ID exact (conversion en string)
                     const formationIdStr = String(formationId);
+                    let foundOption = Array.from(allOptions).find(opt => opt.value === formationIdStr);
                     
-                    console.log('Formation - Trying to set:', formationIdStr);
-                    console.log('Available options:');
-                    Array.from(formationSelect.options).forEach((option, index) => {
-                        console.log(`  [${index}] value: "${option.value}" (type: ${typeof option.value}), text: "${option.text}"`);
-                    });
-                    
-                    // Essayer de définir la valeur
-                    formationSelect.value = formationIdStr;
-                    
-                    // Vérifier si cela a fonctionné
-                    if (formationSelect.value === formationIdStr) {
-                        console.log('✓ Formation successfully set to:', formationSelect.value);
+                    if (foundOption) {
+                        console.log('✅ Trouvé par ID exact:', foundOption.value, foundOption.text);
+                        formationSelect.value = foundOption.value;
+                        foundOption.selected = true;
                     } else {
-                        console.warn('✗ Formation not set. Trying alternative approach...');
+                        console.log('❌ Aucune option avec value="' + formationIdStr + '" trouvée');
+                        console.log('IDs disponibles:', Array.from(allOptions).map(opt => opt.value).filter(v => v !== '').slice(0, 10));
                         
-                        // Essayer de trouver l'option manuellement
-                        let optionFound = false;
-                        Array.from(formationSelect.options).forEach(option => {
-                            if (option.value === formationIdStr || option.value == formationId) {
-                                option.selected = true;
-                                optionFound = true;
-                                console.log('✓ Formation set manually to:', option.value);
-                            }
-                        });
+                        // Afficher un message d'erreur visible pour l'utilisateur
+                        const alertDiv = document.createElement('div');
+                        alertDiv.className = 'alert alert-warning alert-dismissible fade show mt-2';
+                        alertDiv.innerHTML = `
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <strong>Attention:</strong> La formation ID=${formationId} n'est pas disponible dans la liste.
+                            Veuillez sélectionner manuellement la formation souhaitée.
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        `;
                         
-                        if (!optionFound) {
-                            console.error('✗ Could not find matching option for formation ID:', formationId);
+                        const planifierSection = document.getElementById('planifier');
+                        if (planifierSection) {
+                            const existingAlert = planifierSection.querySelector('.alert-warning');
+                            if (existingAlert) existingAlert.remove();
+                            planifierSection.insertBefore(alertDiv, planifierSection.firstChild);
                         }
                     }
                 }
-            }, 200);
+            }, 300);
         }
 
         // Gestion du formulaire de planification
