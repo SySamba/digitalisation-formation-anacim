@@ -70,7 +70,9 @@ INSERT INTO formations (numero, intitule, code, ressource, periodicite_mois, cat
 ('3.17', 'Evaluation d\'un centre de formation (TMC)', 'SUR-FTS-17', 'Externe', 36, 'FORMATION_TECHNIQUE'),
 ('3.18', 'Facilitation - MPN OACI', 'SUR-FTS-18', 'Interne/Externe', 60, 'FORMATION_TECHNIQUE'),
 ('3.19', 'Marchandises dangereuses', 'SUR-FTS-19', 'Interne/Externe', 60, 'FORMATION_TECHNIQUE'),
-('3.8', 'Détection d''explosifs et d''armes', 'SUR-FTS-08', 'Externe', 60, 'FORMATION_TECHNIQUE');
+('3.8', 'Détection d''explosifs et d''armes', 'SUR-FTS-08', 'Externe', 60, 'FORMATION_TECHNIQUE'),
+('3.8', 'Gouvernance Cybersecurite', 'SUR-FTS-21', 'Externe/Interne', 36, 'FORMATION_TECHNIQUE'),
+('3.22', 'Aviation Cybersecurity Training', 'SUR-FTS-20', 'Externe', 40, 'FORMATION_TECHNIQUE');
 
 -- Vérification
 SELECT 
