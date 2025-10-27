@@ -13,14 +13,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = $_POST['email'] ?? '';
     $password = $_POST['password'] ?? '';
     
-    // Vérifier les identifiants
-    if ($email === 'coutay.ba@anacim.sn' && $password === 'anacim2025') {
-        $_SESSION['admin_logged_in'] = true;
-        $_SESSION['admin_email'] = $email;
-        header('Location: admin.php');
-        exit;
-    } else {
-        $error_message = 'Email ou mot de passe incorrect.';
+    // Vérifier les identifiants dans la base de données
+    require_once 'config/database.php';
+    
+    try {
+        $database = new Database();
+        $db = $database->getConnection();
+        
+        // Chercher l'utilisateur dans la table admin_users
+        $stmt = $db->prepare("SELECT * FROM admin_users WHERE email = ? AND actif = 1");
+        $stmt->execute([$email]);
+        $admin = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($admin && password_verify($password, $admin['password'])) {
+            $_SESSION['admin_logged_in'] = true;
+            $_SESSION['admin_email'] = $admin['email'];
+            $_SESSION['admin_id'] = $admin['id'];
+            $_SESSION['admin_nom'] = $admin['prenom'] . ' ' . $admin['nom'];
+            $_SESSION['admin_role'] = $admin['role'];
+            header('Location: admin.php');
+            exit;
+        } else {
+            $error_message = 'Email ou mot de passe incorrect.';
+        }
+    } catch (Exception $e) {
+        $error_message = 'Erreur de connexion à la base de données.';
     }
 }
 ?>

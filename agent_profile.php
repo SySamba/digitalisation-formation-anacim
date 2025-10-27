@@ -156,6 +156,8 @@ foreach ($formations as $f) {
                                         <option value="inspecteur_stagiaire" <?= ($agent_data['grade'] ?? '') === 'inspecteur_stagiaire' ? 'selected' : '' ?>>Inspecteur Stagiaire</option>
                                         <option value="inspecteur_titulaire" <?= ($agent_data['grade'] ?? '') === 'inspecteur_titulaire' ? 'selected' : '' ?>>Inspecteur Titulaire</option>
                                         <option value="inspecteur_principal" <?= ($agent_data['grade'] ?? '') === 'inspecteur_principal' ? 'selected' : '' ?>>Inspecteur Principal</option>
+                                        <option value="verificateur_stagiaire" <?= ($agent_data['grade'] ?? '') === 'verificateur_stagiaire' ? 'selected' : '' ?>>Vérificateur Stagiaire</option>
+                                        <option value="verificateur_titulaire" <?= ($agent_data['grade'] ?? '') === 'verificateur_titulaire' ? 'selected' : '' ?>>Vérificateur Titulaire</option>
                                     </select>
                                 </div>
                             </div>
