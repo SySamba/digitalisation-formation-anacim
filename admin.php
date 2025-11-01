@@ -117,6 +117,9 @@ $formations_urgentes = count(array_filter($formations_a_renouveler, function($f)
             </a>
             <div class="navbar-nav ms-auto">
                 <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="rapports_formations.php"><i class="fas fa-chart-bar"></i> Rapports</a>
+                    </li>
                     <!--
                     <li class="nav-item">
                         <a class="nav-link" href="admin_planning.php"><i class="fas fa-calendar"></i> Planning</a>

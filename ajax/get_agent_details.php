@@ -25,6 +25,21 @@ $stmt_formations = $pdo->prepare("SELECT fa.*, f.code, f.intitule FROM formation
 $stmt_formations->execute([$_GET['id']]);
 $formations_effectuees = $stmt_formations->fetchAll();
 
+// Récupérer les formations effectuées depuis formations_effectuees
+$stmt_fe = $pdo->prepare("SELECT fe.*, f.code, f.intitule, f.categorie FROM formations_effectuees fe JOIN formations f ON fe.formation_id = f.id WHERE fe.agent_id = ? ORDER BY fe.date_fin DESC");
+$stmt_fe->execute([$_GET['id']]);
+$formations_effectuees_real = $stmt_fe->fetchAll();
+
+// Récupérer les formations planifiées
+$stmt_pf = $pdo->prepare("SELECT pf.*, f.code, f.intitule, f.categorie FROM planning_formations pf JOIN formations f ON pf.formation_id = f.id WHERE pf.agent_id = ? AND pf.statut = 'planifie' ORDER BY pf.date_prevue_debut ASC");
+$stmt_pf->execute([$_GET['id']]);
+$formations_planifiees = $stmt_pf->fetchAll();
+
+// Récupérer les formations non effectuées
+$stmt_nf = $pdo->prepare("SELECT f.id, f.intitule, f.code, f.categorie, f.periodicite_mois FROM formations f WHERE f.id NOT IN (SELECT DISTINCT fe.formation_id FROM formations_effectuees fe WHERE fe.agent_id = ?) ORDER BY f.categorie, f.code");
+$stmt_nf->execute([$_GET['id']]);
+$formations_non_effectuees = $stmt_nf->fetchAll();
+
 // Récupérer les diplômes depuis la nouvelle table
 $stmt_diplomes = $pdo->prepare("SELECT * FROM diplomes WHERE agent_id = ? ORDER BY created_at DESC");
 $stmt_diplomes->execute([$_GET['id']]);
@@ -56,6 +71,9 @@ $fichiers = $agent->getFichiersAgent($_GET['id']);
                 </button>
                 <button class="btn btn-outline-primary" onclick="showAgentSection('planning')" id="btn-planning">
                     <i class="fas fa-calendar"></i> Planning
+                </button>
+                <button class="btn btn-outline-success" onclick="showAgentSection('rapports')" id="btn-rapports">
+                    <i class="fas fa-chart-bar"></i> Rapports
                 </button>
             </div>
         </div>
@@ -135,6 +153,7 @@ $fichiers = $agent->getFichiersAgent($_GET['id']);
                             <p class="mt-2 text-muted">Aucune photo</p>
                         </div>
                     <?php endif; ?>
+                    
                 </div>
             </div>
         </div>
@@ -1007,6 +1026,88 @@ $fichiers = $agent->getFichiersAgent($_GET['id']);
             </div>
         </div>
 
+        <!-- Section Rapports -->
+        <div class="agent-section" id="rapports" style="display: none;">
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-chart-bar me-2"></i>
+                        Rapports de Formations
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <p class="mb-4">Générez et téléchargez les rapports de formations pour cet agent.</p>
+                    
+                    <!-- Statistiques rapides -->
+                    <div class="row mb-4">
+                        <div class="col-md-4">
+                            <div class="card border-success">
+                                <div class="card-body text-center">
+                                    <i class="fas fa-check-circle fa-2x text-success mb-2"></i>
+                                    <h4 class="text-success"><?= count($formations_effectuees_real) ?></h4>
+                                    <small>Formations Effectuées</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card border-warning">
+                                <div class="card-body text-center">
+                                    <i class="fas fa-clock fa-2x text-warning mb-2"></i>
+                                    <h4 class="text-warning"><?= count($formations_a_renouveler) ?></h4>
+                                    <small>À Renouveler</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card border-info">
+                                <div class="card-body text-center">
+                                    <i class="fas fa-calendar fa-2x text-info mb-2"></i>
+                                    <h4 class="text-info"><?= count($formations_planifiees) ?></h4>
+                                    <small>Planifiées</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Boutons de téléchargement -->
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="card h-100">
+                                <div class="card-body text-center">
+                                    <i class="fas fa-file-word fa-3x text-primary mb-3"></i>
+                                    <h6>Document Word</h6>
+                                    <p class="text-muted small">Rapport complet au format Microsoft Word (.doc)</p>
+                                    <a href="ajax/generate_rapport_agent.php?agent_id=<?= $_GET['id'] ?>&format=word" 
+                                       class="btn btn-primary btn-sm" target="_blank">
+                                        <i class="fas fa-download me-1"></i>
+                                        Télécharger Word
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card h-100">
+                                <div class="card-body text-center">
+                                    <i class="fas fa-file-pdf fa-3x text-danger mb-3"></i>
+                                    <h6>Document PDF</h6>
+                                    <p class="text-muted small">Rapport complet au format PDF (.pdf)</p>
+                                    <a href="ajax/generate_rapport_agent.php?agent_id=<?= $_GET['id'] ?>&format=pdf" 
+                                       class="btn btn-danger btn-sm" target="_blank">
+                                        <i class="fas fa-download me-1"></i>
+                                        Télécharger PDF
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="alert alert-info mt-4">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>Information:</strong> Les rapports incluent toutes les formations effectuées, planifiées et non effectuées pour cet agent.
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
