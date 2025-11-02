@@ -19,25 +19,64 @@ if (!$agent_data) {
     exit;
 }
 
-// Récupérer les formations depuis la nouvelle table
+// Récupérer les formations effectuées - VERSION AMÉLIORÉE (UNION des deux tables)
 $pdo = $database->getConnection();
-$stmt_formations = $pdo->prepare("SELECT fa.*, f.code, f.intitule FROM formations_agents fa JOIN formations f ON fa.formation_id = f.id WHERE fa.agent_id = ? ORDER BY fa.created_at DESC");
-$stmt_formations->execute([$_GET['id']]);
+$stmt_formations = $pdo->prepare("
+    (SELECT fe.id, fe.agent_id, fe.formation_id, fe.centre_formation, 
+            fe.date_debut, fe.date_fin, fe.fichier_joint, fe.statut, 
+            fe.prochaine_echeance, fe.created_at,
+            f.intitule, f.code, f.categorie, f.periodicite_mois,
+            'formations_effectuees' as source_table
+     FROM formations_effectuees fe
+     JOIN formations f ON fe.formation_id = f.id
+     WHERE fe.agent_id = ? AND fe.statut IN ('termine', 'valide'))
+    
+    UNION ALL
+    
+    (SELECT fa.id, fa.agent_id, fa.formation_id, fa.centre_formation,
+            fa.date_debut, fa.date_fin, fa.fichier_joint, fa.statut,
+            fa.prochaine_echeance, fa.created_at,
+            f.intitule, f.code, f.categorie, f.periodicite_mois,
+            'formations_agents' as source_table
+     FROM formations_agents fa
+     JOIN formations f ON fa.formation_id = f.id
+     WHERE fa.agent_id = ? AND fa.statut IN ('termine', 'valide'))
+    
+    ORDER BY date_fin DESC
+");
+$stmt_formations->execute([$_GET['id'], $_GET['id']]);
 $formations_effectuees = $stmt_formations->fetchAll();
 
-// Récupérer les formations effectuées depuis formations_effectuees
-$stmt_fe = $pdo->prepare("SELECT fe.*, f.code, f.intitule, f.categorie FROM formations_effectuees fe JOIN formations f ON fe.formation_id = f.id WHERE fe.agent_id = ? ORDER BY fe.date_fin DESC");
-$stmt_fe->execute([$_GET['id']]);
-$formations_effectuees_real = $stmt_fe->fetchAll();
-
-// Récupérer les formations planifiées
-$stmt_pf = $pdo->prepare("SELECT pf.*, f.code, f.intitule, f.categorie FROM planning_formations pf JOIN formations f ON pf.formation_id = f.id WHERE pf.agent_id = ? AND pf.statut = 'planifie' ORDER BY pf.date_prevue_debut ASC");
+// Récupérer les formations planifiées - VERSION AMÉLIORÉE
+$stmt_pf = $pdo->prepare("SELECT pf.*, f.code, f.intitule, f.categorie, f.periodicite_mois FROM planning_formations pf JOIN formations f ON pf.formation_id = f.id WHERE pf.agent_id = ? AND pf.statut IN ('planifie', 'confirme') ORDER BY pf.date_prevue_debut ASC");
 $stmt_pf->execute([$_GET['id']]);
 $formations_planifiees = $stmt_pf->fetchAll();
 
-// Récupérer les formations non effectuées
-$stmt_nf = $pdo->prepare("SELECT f.id, f.intitule, f.code, f.categorie, f.periodicite_mois FROM formations f WHERE f.id NOT IN (SELECT DISTINCT fe.formation_id FROM formations_effectuees fe WHERE fe.agent_id = ?) ORDER BY f.categorie, f.code");
-$stmt_nf->execute([$_GET['id']]);
+// Récupérer les formations non effectuées - VERSION AMÉLIORÉE
+$stmt_nf = $pdo->prepare("
+    SELECT DISTINCT f.id, f.intitule, f.code, f.categorie, f.periodicite_mois
+    FROM formations f
+    WHERE f.id NOT IN (
+        -- Exclure les formations déjà effectuées
+        SELECT DISTINCT fe.formation_id 
+        FROM formations_effectuees fe 
+        WHERE fe.agent_id = ? AND fe.statut IN ('termine', 'valide')
+        
+        UNION
+        
+        SELECT DISTINCT fa.formation_id 
+        FROM formations_agents fa 
+        WHERE fa.agent_id = ? AND fa.statut IN ('termine', 'valide')
+    )
+    AND f.id NOT IN (
+        -- Exclure les formations déjà planifiées
+        SELECT DISTINCT pf.formation_id 
+        FROM planning_formations pf 
+        WHERE pf.agent_id = ? AND pf.statut IN ('planifie', 'confirme')
+    )
+    ORDER BY f.categorie, f.code
+");
+$stmt_nf->execute([$_GET['id'], $_GET['id'], $_GET['id']]);
 $formations_non_effectuees = $stmt_nf->fetchAll();
 
 // Récupérer les diplômes depuis la nouvelle table
@@ -45,7 +84,69 @@ $stmt_diplomes = $pdo->prepare("SELECT * FROM diplomes WHERE agent_id = ? ORDER 
 $stmt_diplomes->execute([$_GET['id']]);
 $diplomes = $stmt_diplomes->fetchAll();
 
-$formations_a_renouveler = $agent->getFormationsARenouveler($_GET['id']);
+// Récupérer les formations à mettre à jour (à renouveler) - VERSION SIMPLIFIÉE
+// Approche en deux étapes pour éviter les problèmes de sous-requêtes complexes
+// Pour les formations techniques (SUR-FTS), on regarde dans les 3 ans (36 mois)
+// Pour les autres formations, on regarde dans les 6 mois (180 jours)
+
+// Étape 1: Récupérer toutes les formations effectuées avec périodicité
+$stmt_all_formations = $pdo->prepare("
+    SELECT fe.*, f.intitule, f.code, f.categorie, f.periodicite_mois,
+           DATE_ADD(fe.date_fin, INTERVAL f.periodicite_mois MONTH) as prochaine_echeance_calculee,
+           DATEDIFF(DATE_ADD(fe.date_fin, INTERVAL f.periodicite_mois MONTH), CURDATE()) as jours_restants,
+           'formations_effectuees' as source_table
+    FROM formations_effectuees fe
+    JOIN formations f ON fe.formation_id = f.id
+    WHERE fe.agent_id = ? AND fe.statut IN ('termine', 'valide') AND f.periodicite_mois > 0
+    
+    UNION ALL
+    
+    SELECT fa.*, f.intitule, f.code, f.categorie, f.periodicite_mois,
+           DATE_ADD(fa.date_fin, INTERVAL f.periodicite_mois MONTH) as prochaine_echeance_calculee,
+           DATEDIFF(DATE_ADD(fa.date_fin, INTERVAL f.periodicite_mois MONTH), CURDATE()) as jours_restants,
+           'formations_agents' as source_table
+    FROM formations_agents fa
+    JOIN formations f ON fa.formation_id = f.id
+    WHERE fa.agent_id = ? AND fa.statut IN ('termine', 'valide') AND f.periodicite_mois > 0
+    
+    ORDER BY formation_id, date_fin DESC
+");
+$stmt_all_formations->execute([$_GET['id'], $_GET['id']]);
+$all_formations_temp = $stmt_all_formations->fetchAll();
+
+// Étape 2: Traitement PHP pour garder seulement la formation la plus récente par formation_id
+$formations_par_id = [];
+foreach ($all_formations_temp as $formation) {
+    $formation_id = $formation['formation_id'];
+    if (!isset($formations_par_id[$formation_id]) || 
+        strtotime($formation['date_fin']) > strtotime($formations_par_id[$formation_id]['date_fin'])) {
+        $formations_par_id[$formation_id] = $formation;
+    }
+}
+
+// Étape 3: Filtrer les formations à renouveler selon les critères d'échéance
+$formations_a_renouveler = [];
+foreach ($formations_par_id as $formation) {
+    $a_renouveler = false;
+    
+    if (strpos($formation['code'], 'SUR-FTS') !== false) {
+        // Formations techniques SUR-FTS : échéance dans les 3 ans (1095 jours)
+        $a_renouveler = $formation['jours_restants'] <= 1095;
+    } else {
+        // Autres formations : échéance dans les 6 mois (180 jours)
+        $a_renouveler = $formation['jours_restants'] <= 180;
+    }
+    
+    if ($a_renouveler) {
+        $formations_a_renouveler[] = $formation;
+    }
+}
+
+// Trier par jours restants
+usort($formations_a_renouveler, function($a, $b) {
+    return $a['jours_restants'] - $b['jours_restants'];
+});
+
 $fichiers = $agent->getFichiersAgent($_GET['id']);
 ?>
 
@@ -299,25 +400,25 @@ $fichiers = $agent->getFichiersAgent($_GET['id']);
             <h5 class="mb-3">Formations Non Effectuées</h5>
             
             <?php 
-            // Récupérer toutes les formations disponibles avec le statut de planification
-            $stmt_all_formations = $pdo->prepare("
-                SELECT f.*, 
-                       (SELECT COUNT(*) FROM planning_formations pf 
-                        WHERE pf.agent_id = ? AND pf.formation_id = f.id 
-                        AND pf.statut IN ('planifie', 'confirme')) as est_planifie
-                FROM formations f 
-                ORDER BY f.code
-            ");
-            $stmt_all_formations->execute([$_GET['id']]);
-            $all_formations = $stmt_all_formations->fetchAll();
+            // Ajouter le statut de planification aux formations non effectuées déjà récupérées
+            $formations_non_effectuees_avec_planning = [];
+            foreach ($formations_non_effectuees as $formation) {
+                // Récupérer le statut de planification pour cette formation
+                $stmt_planning = $pdo->prepare("
+                    SELECT COUNT(*) as est_planifie 
+                    FROM planning_formations pf 
+                    WHERE pf.agent_id = ? AND pf.formation_id = ? 
+                    AND pf.statut IN ('planifie', 'confirme')
+                ");
+                $stmt_planning->execute([$_GET['id'], $formation['id']]);
+                $planning_info = $stmt_planning->fetch();
+                
+                $formation['est_planifie'] = $planning_info['est_planifie'];
+                $formations_non_effectuees_avec_planning[] = $formation;
+            }
             
-            // Récupérer les IDs des formations déjà effectuées par cet agent
-            $formations_effectuees_ids = array_column($formations_effectuees, 'formation_id');
-            
-            // Filtrer les formations non effectuées
-            $formations_non_effectuees = array_filter($all_formations, function($formation) use ($formations_effectuees_ids) {
-                return !in_array($formation['id'], $formations_effectuees_ids);
-            });
+            // Utiliser les formations avec info de planning
+            $formations_non_effectuees = $formations_non_effectuees_avec_planning;
             
             // Grouper les formations non effectuées par catégorie
             $formations_non_effectuees_par_categorie = [
@@ -1040,25 +1141,34 @@ $fichiers = $agent->getFichiersAgent($_GET['id']);
                     
                     <!-- Statistiques rapides -->
                     <div class="row mb-4">
-                        <div class="col-md-4">
+                        <div class="col-md-3">
                             <div class="card border-success">
                                 <div class="card-body text-center">
                                     <i class="fas fa-check-circle fa-2x text-success mb-2"></i>
-                                    <h4 class="text-success"><?= count($formations_effectuees_real) ?></h4>
+                                    <h4 class="text-success"><?= count($formations_effectuees) ?></h4>
                                     <small>Formations Effectuées</small>
                                 </div>
                             </div>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-md-3">
+                            <div class="card border-danger">
+                                <div class="card-body text-center">
+                                    <i class="fas fa-times-circle fa-2x text-danger mb-2"></i>
+                                    <h4 class="text-danger"><?= count($formations_non_effectuees) ?></h4>
+                                    <small>Non Effectuées</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
                             <div class="card border-warning">
                                 <div class="card-body text-center">
-                                    <i class="fas fa-clock fa-2x text-warning mb-2"></i>
+                                    <i class="fas fa-exclamation-triangle fa-2x text-warning mb-2"></i>
                                     <h4 class="text-warning"><?= count($formations_a_renouveler) ?></h4>
                                     <small>À Renouveler</small>
                                 </div>
                             </div>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-md-3">
                             <div class="card border-info">
                                 <div class="card-body text-center">
                                     <i class="fas fa-calendar fa-2x text-info mb-2"></i>

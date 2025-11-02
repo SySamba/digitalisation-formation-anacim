@@ -1,7 +1,7 @@
 <?php
 // Générateur PDF simple et fiable
 
-function generateSimplePDF($agent_data, $formations_effectuees, $formations_planifiees, $formations_non_effectuees) {
+function generateSimplePDF($agent_data, $formations_effectuees, $formations_planifiees, $formations_non_effectuees, $formations_a_mettre_a_jour = []) {
     $filename = 'rapport_formations_' . $agent_data['matricule'] . '_' . date('Y-m-d') . '.html';
     
     // Headers pour forcer l'impression automatique
@@ -11,7 +11,7 @@ function generateSimplePDF($agent_data, $formations_effectuees, $formations_plan
     header('X-Frame-Options: SAMEORIGIN');
     
     // Générer un HTML avec tableaux propres
-    echo generateCleanHTML($agent_data, $formations_effectuees, $formations_planifiees, $formations_non_effectuees);
+    echo generateCleanHTML($agent_data, $formations_effectuees, $formations_planifiees, $formations_non_effectuees, $formations_a_mettre_a_jour);
 }
 
 function generatePDFContent($agent_data, $formations_effectuees, $formations_planifiees, $formations_non_effectuees) {
@@ -203,7 +203,7 @@ function generateCleanPDF($agent_data, $formations_effectuees, $formations_plani
     echo $pdf_content;
 }
 
-function generateCleanHTML($agent_data, $formations_effectuees, $formations_planifiees, $formations_non_effectuees) {
+function generateCleanHTML($agent_data, $formations_effectuees, $formations_planifiees, $formations_non_effectuees, $formations_a_mettre_a_jour = []) {
     $html = '<!DOCTYPE html>
 <html>
 <head>
@@ -260,6 +260,9 @@ function generateCleanHTML($agent_data, $formations_effectuees, $formations_plan
         @media print {
             .print-button { display: none !important; }
         }
+        .urgent { background-color: #f2dede; color: #a94442; }
+        .high { background-color: #fcf8e3; color: #8a6d3b; }
+        .medium { background-color: #d9edf7; color: #31708f; }
     </style>
 </head>
 <body>
@@ -285,6 +288,7 @@ function generateCleanHTML($agent_data, $formations_effectuees, $formations_plan
             <th>Centre</th>
             <th>Date Fin</th>
             <th>Statut</th>
+            <th>Source</th>
         </tr>';
     
     foreach ($formations_effectuees as $fe) {
@@ -294,6 +298,7 @@ function generateCleanHTML($agent_data, $formations_effectuees, $formations_plan
             <td>' . htmlspecialchars($fe['centre_formation']) . '</td>
             <td>' . date('d/m/Y', strtotime($fe['date_fin'])) . '</td>
             <td>' . htmlspecialchars($fe['statut']) . '</td>
+            <td>' . htmlspecialchars($fe['source_table'] ?? 'N/A') . '</td>
         </tr>';
     }
     
@@ -327,6 +332,7 @@ function generateCleanHTML($agent_data, $formations_effectuees, $formations_plan
             <th>Code</th>
             <th>Intitulé</th>
             <th>Catégorie</th>
+            <th>Priorité</th>
         </tr>';
     
     foreach ($formations_non_effectuees as $fne) {
@@ -334,10 +340,68 @@ function generateCleanHTML($agent_data, $formations_effectuees, $formations_plan
             <td>' . htmlspecialchars($fne['code']) . '</td>
             <td>' . htmlspecialchars($fne['intitule']) . '</td>
             <td>' . htmlspecialchars($fne['categorie']) . '</td>
+            <td>' . htmlspecialchars($fne['priorite'] ?? 'N/A') . '</td>
         </tr>';
     }
     
-    $html .= '</table>
+    $html .= '</table>';
+    
+    // Section des formations à mettre à jour
+    if (!empty($formations_a_mettre_a_jour)) {
+        $html .= '
+        <h3 style="color: #d9534f;">FORMATIONS À METTRE À JOUR (' . count($formations_a_mettre_a_jour) . ')</h3>
+        <table>
+            <tr>
+                <th>Code</th>
+                <th>Intitulé</th>
+                <th>Dernière Formation</th>
+                <th>Prochaine Échéance</th>
+                <th>Jours Restants</th>
+                <th>Priorité</th>
+            </tr>';
+        
+        foreach ($formations_a_mettre_a_jour as $fmaj) {
+            $jours_restants = $fmaj['jours_restants'];
+            $priorite_class = '';
+            $priorite_text = '';
+            
+            if ($jours_restants <= 0) {
+                $priorite_class = 'urgent';
+                $priorite_text = 'URGENT - Échue';
+            } elseif ($jours_restants <= 30) {
+                $priorite_class = 'high';
+                $priorite_text = 'HAUTE - ' . $jours_restants . ' jours';
+            } else {
+                $priorite_class = 'medium';
+                $priorite_text = 'MOYENNE - ' . $jours_restants . ' jours';
+            }
+            
+            $html .= '<tr class="' . $priorite_class . '">
+                <td>' . htmlspecialchars($fmaj['code']) . '</td>
+                <td>' . htmlspecialchars($fmaj['intitule']) . '</td>
+                <td>' . date('d/m/Y', strtotime($fmaj['date_fin'])) . '</td>
+                <td>' . date('d/m/Y', strtotime($fmaj['prochaine_echeance_calculee'])) . '</td>
+                <td>' . $jours_restants . '</td>
+                <td>' . $priorite_text . '</td>
+            </tr>';
+        }
+        
+        $html .= '</table>';
+    }
+    
+    $html .= '
+    <div style="margin-top: 30px; padding: 15px; background-color: #f9f9f9; border: 1px solid #ddd;">
+        <h4>Résumé du Rapport</h4>
+        <p><strong>Formations effectuées:</strong> ' . count($formations_effectuees) . '</p>
+        <p><strong>Formations planifiées:</strong> ' . count($formations_planifiees) . '</p>
+        <p><strong>Formations non effectuées:</strong> ' . count($formations_non_effectuees) . '</p>';
+    
+    if (!empty($formations_a_mettre_a_jour)) {
+        $html .= '<p><strong style="color: #d9534f;">Formations à mettre à jour:</strong> ' . count($formations_a_mettre_a_jour) . '</p>';
+    }
+    
+    $html .= '<p><strong>Date de génération:</strong> ' . date('d/m/Y H:i') . '</p>
+    </div>
 </body>
 </html>';
 
