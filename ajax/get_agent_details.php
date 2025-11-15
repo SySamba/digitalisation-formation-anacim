@@ -1179,6 +1179,78 @@ $fichiers = $agent->getFichiersAgent($_GET['id']);
                         </div>
                     </div>
                     
+                    <!-- Bouton de test des graphiques -->
+                    <div class="row mb-3">
+                        <div class="col-12">
+                            <button class="btn btn-success btn-sm" onclick="forceInitCharts()">
+                                <i class="fas fa-refresh me-1"></i>
+                                Actualiser les Graphiques
+                            </button>
+                            <small class="text-muted ms-2">Cliquez si les graphiques ne s'affichent pas</small>
+                        </div>
+                    </div>
+
+                    <!-- Graphiques de l'agent -->
+                    <div class="row mb-4">
+                        <div class="col-md-4">
+                            <div class="card">
+                                <div class="card-header bg-info text-white">
+                                    <h6 class="mb-0">
+                                        <i class="fas fa-chart-pie me-2"></i>
+                                        Répartition Globale
+                                    </h6>
+                                </div>
+                                <div class="card-body">
+                                    <div style="position: relative; height: 250px;">
+                                        <canvas id="agentFormationsChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card">
+                                <div class="card-header bg-warning text-white">
+                                    <h6 class="mb-0">
+                                        <i class="fas fa-chart-bar me-2"></i>
+                                        Effectuées vs Non Effectuées
+                                    </h6>
+                                </div>
+                                <div class="card-body">
+                                    <div style="position: relative; height: 250px;">
+                                        <canvas id="agentTypesChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card">
+                                <div class="card-header bg-success text-white">
+                                    <h6 class="mb-0">
+                                        <i class="fas fa-table me-2"></i>
+                                        Détail par Type de Formation
+                                    </h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="table-responsive">
+                                        <table class="table table-sm">
+                                            <thead class="table-dark">
+                                                <tr>
+                                                    <th style="font-size: 11px;">Type</th>
+                                                    <th class="text-center" style="font-size: 11px;">Eff.</th>
+                                                    <th class="text-center" style="font-size: 11px;">Non Eff.</th>
+                                                    <th style="font-size: 11px;">Taux</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="agentRealizationTable">
+                                                <!-- Contenu généré par JavaScript -->
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Boutons de téléchargement -->
                     <div class="row">
                         <div class="col-md-6">
@@ -1944,6 +2016,401 @@ function deleteDiplome(diplomeId) {
     if (confirm('Êtes-vous sûr de vouloir supprimer ce diplôme ?')) {
         console.log('Supprimer diplôme:', diplomeId);
     }
+}
+
+// Fonction pour initialiser les graphiques de l'agent
+function initAgentCharts() {
+    console.log('🔧 Initialisation des graphiques agent...');
+    
+    // Vérifier si Chart.js est disponible
+    if (typeof Chart === 'undefined') {
+        console.error('❌ Chart.js n\'est pas disponible');
+        return;
+    }
+    
+    // Données pour les graphiques de cet agent spécifique
+    const agentData = {
+        effectuees: <?= count($formations_effectuees) ?>,
+        non_effectuees: <?= count($formations_non_effectuees) ?>,
+        a_renouveler: <?= count($formations_a_renouveler) ?>,
+        planifiees: <?= count($formations_planifiees) ?>
+    };
+    
+    console.log('📊 Données agent:', agentData);
+
+    // Données par type de formation pour cet agent (effectuées et non effectuées)
+    const typesData = {
+        <?php
+        // Compter les formations effectuées par type
+        $types_effectuees = [
+            'FAMILIARISATION' => 0,
+            'FORMATION_INITIALE' => 0,
+            'FORMATION_COURS_EMPLOI' => 0,
+            'FORMATION_TECHNIQUE' => 0
+        ];
+        
+        foreach ($formations_effectuees as $formation) {
+            if (strpos($formation['code'], 'SUR-FAM') !== false) {
+                $types_effectuees['FAMILIARISATION']++;
+            } elseif (strpos($formation['code'], 'SUR-INI') !== false) {
+                $types_effectuees['FORMATION_INITIALE']++;
+            } elseif (strpos($formation['code'], 'SUR-FCE') !== false) {
+                $types_effectuees['FORMATION_COURS_EMPLOI']++;
+            } elseif (strpos($formation['code'], 'SUR-FTS') !== false) {
+                $types_effectuees['FORMATION_TECHNIQUE']++;
+            }
+        }
+        
+        // Compter les formations non effectuées par type
+        $types_non_effectuees = [
+            'FAMILIARISATION' => 0,
+            'FORMATION_INITIALE' => 0,
+            'FORMATION_COURS_EMPLOI' => 0,
+            'FORMATION_TECHNIQUE' => 0
+        ];
+        
+        foreach ($formations_non_effectuees as $formation) {
+            if (strpos($formation['code'], 'SUR-FAM') !== false) {
+                $types_non_effectuees['FAMILIARISATION']++;
+            } elseif (strpos($formation['code'], 'SUR-INI') !== false) {
+                $types_non_effectuees['FORMATION_INITIALE']++;
+            } elseif (strpos($formation['code'], 'SUR-FCE') !== false) {
+                $types_non_effectuees['FORMATION_COURS_EMPLOI']++;
+            } elseif (strpos($formation['code'], 'SUR-FTS') !== false) {
+                $types_non_effectuees['FORMATION_TECHNIQUE']++;
+            }
+        }
+        ?>
+        effectuees: {
+            familiarisation: <?= $types_effectuees['FAMILIARISATION'] ?>,
+            initiale: <?= $types_effectuees['FORMATION_INITIALE'] ?>,
+            cours_emploi: <?= $types_effectuees['FORMATION_COURS_EMPLOI'] ?>,
+            technique: <?= $types_effectuees['FORMATION_TECHNIQUE'] ?>
+        },
+        non_effectuees: {
+            familiarisation: <?= $types_non_effectuees['FAMILIARISATION'] ?>,
+            initiale: <?= $types_non_effectuees['FORMATION_INITIALE'] ?>,
+            cours_emploi: <?= $types_non_effectuees['FORMATION_COURS_EMPLOI'] ?>,
+            technique: <?= $types_non_effectuees['FORMATION_TECHNIQUE'] ?>
+        }
+    };
+
+    // Couleurs pour les graphiques
+    const colors = {
+        primary: '#0d6efd',
+        success: '#198754',
+        danger: '#dc3545',
+        warning: '#ffc107',
+        info: '#0dcaf0',
+        secondary: '#6c757d'
+    };
+
+    // Graphique 1: Répartition globale des formations de l'agent
+    const ctx1 = document.getElementById('agentFormationsChart');
+    console.log('🔍 Recherche canvas agentFormationsChart:', !!ctx1);
+    if (ctx1) {
+        console.log('✅ Canvas trouvé, création du graphique formations...');
+        try {
+            agentFormationsChartInstance = new Chart(ctx1, {
+            type: 'doughnut',
+            data: {
+                labels: ['Effectuées', 'Non Effectuées', 'À Renouveler', 'Planifiées'],
+                datasets: [{
+                    data: [agentData.effectuees, agentData.non_effectuees, agentData.a_renouveler, agentData.planifiees],
+                    backgroundColor: [colors.success, colors.danger, colors.warning, colors.info],
+                    borderWidth: 2,
+                    borderColor: '#fff'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            padding: 15,
+                            usePointStyle: true
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                const percentage = total > 0 ? ((context.parsed * 100) / total).toFixed(1) : 0;
+                                return context.label + ': ' + context.parsed + ' (' + percentage + '%)';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+            console.log('✅ Graphique formations créé avec succès');
+        } catch (error) {
+            console.error('❌ Erreur création graphique formations:', error);
+        }
+    } else {
+        console.error('❌ Canvas agentFormationsChart non trouvé');
+    }
+
+    // Graphique 2: Formations effectuées vs non effectuées par type
+    const ctx2 = document.getElementById('agentTypesChart');
+    console.log('🔍 Recherche canvas agentTypesChart:', !!ctx2);
+    if (ctx2) {
+        console.log('✅ Canvas trouvé, création du graphique types...');
+        try {
+            agentTypesChartInstance = new Chart(ctx2, {
+                type: 'bar',
+                data: {
+                    labels: ['Familiarisation', 'Formation Initiale', 'Cours d\'Emploi', 'Technique'],
+                    datasets: [
+                        {
+                            label: 'Effectuées',
+                            data: [
+                                typesData.effectuees.familiarisation, 
+                                typesData.effectuees.initiale, 
+                                typesData.effectuees.cours_emploi, 
+                                typesData.effectuees.technique
+                            ],
+                            backgroundColor: colors.success,
+                            borderColor: colors.success,
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'Non Effectuées',
+                            data: [
+                                typesData.non_effectuees.familiarisation, 
+                                typesData.non_effectuees.initiale, 
+                                typesData.non_effectuees.cours_emploi, 
+                                typesData.non_effectuees.technique
+                            ],
+                            backgroundColor: colors.danger,
+                            borderColor: colors.danger,
+                            borderWidth: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'bottom',
+                            labels: {
+                                padding: 10,
+                                usePointStyle: true
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                title: function(context) {
+                                    return 'Type: ' + context[0].label;
+                                },
+                                label: function(context) {
+                                    return context.dataset.label + ': ' + context.parsed.y;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1
+                            },
+                            title: {
+                                display: true,
+                                text: 'Nombre de formations'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Types de formation'
+                            }
+                        }
+                    }
+                }
+            });
+            console.log('✅ Graphique types créé avec succès');
+        } catch (error) {
+            console.error('❌ Erreur création graphique types:', error);
+        }
+    } else {
+        console.error('❌ Canvas agentTypesChart non trouvé');
+    }
+
+    // Tableau 3: Détail par type de formation avec barres de progression
+    const tableBody = document.getElementById('agentRealizationTable');
+    console.log('🔍 Recherche tableau agentRealizationTable:', !!tableBody);
+    if (tableBody) {
+        console.log('✅ Tableau trouvé, génération du contenu...');
+        try {
+            const labels = ['Familiarisation', 'Formation Initiale', 'Cours d\'Emploi', 'Technique'];
+            const types = ['familiarisation', 'initiale', 'cours_emploi', 'technique'];
+            
+            let tableHTML = '';
+            
+            types.forEach((type, index) => {
+                const effectuees = typesData.effectuees[type];
+                const non_effectuees = typesData.non_effectuees[type];
+                const total = effectuees + non_effectuees;
+                const taux = total > 0 ? ((effectuees / total) * 100).toFixed(1) : 0;
+                
+                // Nom court pour le type
+                let shortLabel = labels[index];
+                if (shortLabel === 'Formation Initiale') shortLabel = 'F. Initiale';
+                if (shortLabel === 'Cours d\'Emploi') shortLabel = 'C. Emploi';
+                if (shortLabel === 'Formation Technique') shortLabel = 'F. Technique';
+                
+                tableHTML += `
+                    <tr>
+                        <td style="font-size: 10px;"><strong>${shortLabel}</strong></td>
+                        <td class="text-center">
+                            <span class="badge bg-success" style="font-size: 9px;">${effectuees}</span>
+                        </td>
+                        <td class="text-center">
+                            <span class="badge bg-danger" style="font-size: 9px;">${non_effectuees}</span>
+                        </td>
+                        <td style="width: 100px;">
+                            <div class="progress" style="height: 15px; font-size: 9px;">
+                                <div class="progress-bar bg-success" style="width: ${taux}%" 
+                                     data-bs-toggle="tooltip" 
+                                     title="Effectuées: ${effectuees}, Non effectuées: ${non_effectuees}, Total: ${total}">
+                                    ${taux}%
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            tableBody.innerHTML = tableHTML;
+            
+            // Initialiser les tooltips Bootstrap si disponible
+            if (typeof bootstrap !== 'undefined' && bootstrap.Tooltip) {
+                const tooltipTriggerList = tableBody.querySelectorAll('[data-bs-toggle="tooltip"]');
+                tooltipTriggerList.forEach(tooltipTriggerEl => {
+                    new bootstrap.Tooltip(tooltipTriggerEl);
+                });
+            }
+            
+            console.log('✅ Tableau détail par type créé avec succès');
+        } catch (error) {
+            console.error('❌ Erreur création tableau détail par type:', error);
+        }
+    } else {
+        console.error('❌ Tableau agentRealizationTable non trouvé');
+    }
+}
+
+// Variables globales pour les graphiques
+let agentFormationsChartInstance = null;
+let agentTypesChartInstance = null;
+
+// Fonction pour forcer l'initialisation des graphiques (bouton de test)
+function forceInitCharts() {
+    console.log('🔄 Force initialisation des graphiques...');
+    destroyAgentCharts();
+    setTimeout(initAgentCharts, 100);
+}
+
+// Fonction pour détruire les graphiques existants
+function destroyAgentCharts() {
+    if (agentFormationsChartInstance) {
+        agentFormationsChartInstance.destroy();
+        agentFormationsChartInstance = null;
+    }
+    if (agentTypesChartInstance) {
+        agentTypesChartInstance.destroy();
+        agentTypesChartInstance = null;
+    }
+}
+
+// Initialiser les graphiques quand la section rapports est affichée
+function initChartsWhenReady() {
+    // Vérifier si Chart.js est disponible et si les éléments canvas existent
+    const canvas1 = document.getElementById('agentFormationsChart');
+    const canvas2 = document.getElementById('agentTypesChart');
+    
+    if (typeof Chart !== 'undefined' && canvas1 && canvas2) {
+        // Détruire les graphiques existants
+        destroyAgentCharts();
+        
+        // Attendre un peu pour s'assurer que les éléments sont visibles
+        setTimeout(() => {
+            initAgentCharts();
+        }, 200);
+    } else if (typeof Chart === 'undefined') {
+        // Charger Chart.js si pas encore chargé
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/chart.js';
+        script.onload = function() {
+            setTimeout(() => {
+                initAgentCharts();
+            }, 300);
+        };
+        document.head.appendChild(script);
+    }
+}
+
+// Initialiser au chargement du document
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('📄 Document chargé dans la modal');
+    setTimeout(initChartsWhenReady, 1000);
+});
+
+// Écouter l'événement personnalisé de chargement du contenu agent
+window.addEventListener('agentContentLoaded', function() {
+    console.log('👤 Contenu agent chargé, initialisation des graphiques...');
+    setTimeout(initChartsWhenReady, 1000);
+});
+
+// Réinitialiser les graphiques quand on change de section
+if (typeof showAgentSection === 'function') {
+    const originalShowAgentSection = showAgentSection;
+    showAgentSection = function(sectionId) {
+        originalShowAgentSection(sectionId);
+        if (sectionId === 'rapports') {
+            setTimeout(initChartsWhenReady, 300);
+        }
+    };
+} else {
+    // Définir la fonction si elle n'existe pas encore
+    window.showAgentSection = function(sectionId) {
+        console.log('Switching to section:', sectionId);
+        
+        // Masquer toutes les sections
+        document.querySelectorAll('.agent-section').forEach(section => {
+            section.style.display = 'none';
+        });
+        
+        // Retirer la classe active de tous les boutons
+        document.querySelectorAll('.btn-group button, [id^="btn-"]').forEach(btn => {
+            btn.classList.remove('btn-primary', 'active');
+            btn.classList.add('btn-outline-primary');
+        });
+        
+        // Afficher la section sélectionnée
+        const targetSection = document.getElementById(sectionId);
+        if (targetSection) {
+            targetSection.style.display = 'block';
+        }
+        
+        // Activer le bouton correspondant
+        const activeBtn = document.getElementById('btn-' + sectionId);
+        if (activeBtn) {
+            activeBtn.classList.remove('btn-outline-primary');
+            activeBtn.classList.add('btn-primary', 'active');
+        }
+        
+        // Initialiser les graphiques si c'est la section rapports
+        if (sectionId === 'rapports') {
+            console.log('🎯 Section rapports activée, initialisation des graphiques...');
+            setTimeout(initChartsWhenReady, 500);
+        }
+    };
 }
 
 // Le gestionnaire de planification est maintenant dans admin.php

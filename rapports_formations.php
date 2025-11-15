@@ -695,6 +695,32 @@ if ($action === 'download_all') {
                         </div>
                     </div>
 
+                    <!-- Graphiques de synthèse -->
+                    <div class="card mb-4">
+                        <div class="card-header bg-info text-white">
+                            <h6 class="mb-0">
+                                <i class="fas fa-chart-pie me-2"></i>
+                                Synthèse Graphique des Formations
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h6 class="text-center">Répartition des Formations</h6>
+                                    <div style="position: relative; height: 300px;">
+                                        <canvas id="reportFormationsChart"></canvas>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <h6 class="text-center">Formations par Type</h6>
+                                    <div style="position: relative; height: 300px;">
+                                        <canvas id="reportTypesChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Formations effectuées -->
                     <div class="card mb-4">
                         <div class="card-header bg-success text-white">
@@ -837,5 +863,170 @@ if ($action === 'download_all') {
     <?php endif; ?>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <?php if (isset($show_preview) && $show_preview): ?>
+    <script>
+        // Initialiser les graphiques pour le rapport de l'agent
+        document.addEventListener('DOMContentLoaded', function() {
+            // Données pour les graphiques de cet agent spécifique
+            const agentReportData = {
+                effectuees: <?= count($formations_effectuees) ?>,
+                non_effectuees: <?= count($formations_non_effectuees) ?>,
+                a_mettre_a_jour: <?= count($formations_a_mettre_a_jour) ?>,
+                planifiees: <?= count($formations_planifiees) ?>
+            };
+
+            // Données par type de formation pour cet agent
+            const typesReportData = {
+                <?php
+                $types_report = [
+                    'FAMILIARISATION' => 0,
+                    'FORMATION_INITIALE' => 0,
+                    'FORMATION_COURS_EMPLOI' => 0,
+                    'FORMATION_TECHNIQUE' => 0
+                ];
+                
+                foreach ($formations_effectuees as $formation) {
+                    if (strpos($formation['code'], 'SUR-FAM') !== false) {
+                        $types_report['FAMILIARISATION']++;
+                    } elseif (strpos($formation['code'], 'SUR-INI') !== false) {
+                        $types_report['FORMATION_INITIALE']++;
+                    } elseif (strpos($formation['code'], 'SUR-FCE') !== false) {
+                        $types_report['FORMATION_COURS_EMPLOI']++;
+                    } elseif (strpos($formation['code'], 'SUR-FTS') !== false) {
+                        $types_report['FORMATION_TECHNIQUE']++;
+                    }
+                }
+                ?>
+                familiarisation: <?= $types_report['FAMILIARISATION'] ?>,
+                initiale: <?= $types_report['FORMATION_INITIALE'] ?>,
+                cours_emploi: <?= $types_report['FORMATION_COURS_EMPLOI'] ?>,
+                technique: <?= $types_report['FORMATION_TECHNIQUE'] ?>
+            };
+
+            // Couleurs pour les graphiques
+            const colors = {
+                primary: '#0d6efd',
+                success: '#198754',
+                danger: '#dc3545',
+                warning: '#ffc107',
+                info: '#0dcaf0',
+                secondary: '#6c757d'
+            };
+
+            // Graphique 1: Répartition globale des formations de l'agent
+            const ctx1 = document.getElementById('reportFormationsChart');
+            if (ctx1) {
+                new Chart(ctx1, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Effectuées', 'Non Effectuées', 'À Mettre à Jour', 'Planifiées'],
+                        datasets: [{
+                            data: [agentReportData.effectuees, agentReportData.non_effectuees, agentReportData.a_mettre_a_jour, agentReportData.planifiees],
+                            backgroundColor: [colors.success, colors.danger, colors.warning, colors.info],
+                            borderWidth: 2,
+                            borderColor: '#fff'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'bottom',
+                                labels: {
+                                    padding: 10,
+                                    usePointStyle: true,
+                                    font: {
+                                        size: 11
+                                    }
+                                }
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                        const percentage = total > 0 ? ((context.parsed * 100) / total).toFixed(1) : 0;
+                                        return context.label + ': ' + context.parsed + ' (' + percentage + '%)';
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            // Graphique 2: Formations par type pour cet agent
+            const ctx2 = document.getElementById('reportTypesChart');
+            if (ctx2) {
+                new Chart(ctx2, {
+                    type: 'bar',
+                    data: {
+                        labels: ['Familiarisation', 'Formation Initiale', 'Cours d\'Emploi', 'Technique'],
+                        datasets: [{
+                            label: 'Formations Effectuées',
+                            data: [typesReportData.familiarisation, typesReportData.initiale, typesReportData.cours_emploi, typesReportData.technique],
+                            backgroundColor: [colors.info, colors.primary, colors.warning, colors.success],
+                            borderColor: [colors.info, colors.primary, colors.warning, colors.success],
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    title: function(context) {
+                                        return 'Type: ' + context[0].label;
+                                    },
+                                    label: function(context) {
+                                        return 'Formations: ' + context.parsed.y;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    stepSize: 1,
+                                    font: {
+                                        size: 10
+                                    }
+                                },
+                                title: {
+                                    display: true,
+                                    text: 'Nombre',
+                                    font: {
+                                        size: 11
+                                    }
+                                }
+                            },
+                            x: {
+                                ticks: {
+                                    font: {
+                                        size: 10
+                                    }
+                                },
+                                title: {
+                                    display: true,
+                                    text: 'Types de formation',
+                                    font: {
+                                        size: 11
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        });
+    </script>
+    <?php endif; ?>
 </body>
 </html>

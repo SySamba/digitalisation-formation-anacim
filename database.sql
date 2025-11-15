@@ -170,6 +170,16 @@ INSERT INTO formations (numero, intitule, code, ressource, periodicite_mois, cat
 ('1.12', 'Règlementation - Dispositions relatives à la formation et à la certification du personnel de sûreté', 'SUR-INI-12', 'Interne', 36, 'FORMATION_INITIALE'),
 ('1.13', 'Contrôle Qualité - MPN "Inspecteur national" et dispositions nationales', 'SUR-INI-14', 'Interne/Externe', 36, 'FORMATION_INITIALE'),
 ('1.14', 'Réglementation - Mesures applicables à l\'exploitation des équipements de sûreté', 'SUR-INI-15', 'Interne', 36, 'FORMATION_INITIALE'),
+('1.15', 'Gestion de Crise -MP', 'SUR-INI-25', 'Interne/Externe', 36, 'FORMATION_INITIALE'),
+('1.16', 'Sûreté du Fret et de la Poste -MP', 'SUR-INI-16', 'Interne/Externe', 36, 'FORMATION_INITIALE'),
+('1.17', 'Imagerie Radioscopique -MP', 'SUR-INI-17', 'Externe', 36, 'FORMATION_INITIALE'),
+('1.18', 'Programme National de Formation en Sûreté de l\'Aviation Civile (PNFSAC) -MP', 'SUR-INI-18', 'Interne/Externe', 36, 'FORMATION_INITIALE'),
+('1.19', 'Maintenance des équipements Sûreté -MP', 'SUR-INI-19', 'Externe', 36, 'FORMATION_INITIALE'),
+('1.20', 'Superviseur d\'aéroport -MP', 'SUR-INI-20', 'Interne/Externe', 36, 'FORMATION_INITIALE'),
+('1.21', 'Instructeur en Sûreté de l\'aviation -MP', 'SUR-INI-21', 'Interne/Externe', 36, 'FORMATION_INITIALE'),
+('1.22', 'Base Sûreté -MP', 'SUR-INI-22', 'Interne/Externe', 36, 'FORMATION_INITIALE'),
+('1.23', 'Marchandises dangereuses -MP', 'SUR-INI-23', 'Interne/Externe', 36, 'FORMATION_INITIALE'),
+('1.24', 'Gestion des risques en Sûreté -MP', 'SUR-INI-24', 'Interne/Externe', 36, 'FORMATION_INITIALE'),
 
 -- FORMATION EN COURS D'EMPLOI
 ('2.1', 'Inspection - Protection physique des Aéroports', 'SUR-FCE-01', 'Interne', 564, 'FORMATION_COURS_EMPLOI'),
