@@ -251,6 +251,7 @@ $formations_urgentes = count(array_filter($formations_a_renouveler, function($f)
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="graphiques_agent_fix.js"></script>
     <script>
         function viewAgent(agentId) {
             console.log('Loading agent details for ID:', agentId);
@@ -276,10 +277,33 @@ $formations_urgentes = count(array_filter($formations_a_renouveler, function($f)
                     
                     // Attendre que la modal soit complètement ouverte avant d'initialiser les graphiques
                     document.getElementById('agentModal').addEventListener('shown.bs.modal', function() {
-                        // Vérifier si la fonction d'initialisation des graphiques existe
-                        if (typeof initChartsWhenReady === 'function') {
-                            setTimeout(initChartsWhenReady, 500);
-                        }
+                        console.log('🎯 Modal agent ouverte, préparation des graphiques...');
+                        
+                        // Attendre un peu plus longtemps pour que tout soit chargé
+                        setTimeout(() => {
+                            // Vérifier si la fonction d'initialisation des graphiques existe
+                            if (typeof initChartsWhenReady === 'function') {
+                                console.log('📊 Initialisation des graphiques via initChartsWhenReady');
+                                initChartsWhenReady();
+                            } else if (typeof initAgentCharts === 'function') {
+                                console.log('📊 Initialisation des graphiques via initAgentCharts');
+                                initAgentCharts();
+                            } else {
+                                console.log('⚠️ Aucune fonction de graphiques trouvée, tentative de recherche...');
+                                // Essayer de trouver les fonctions dans le contexte global
+                                setTimeout(() => {
+                                    if (window.initChartsWhenReady) {
+                                        console.log('📊 Fonction trouvée dans window, initialisation...');
+                                        window.initChartsWhenReady();
+                                    } else if (window.forceInitAgentCharts) {
+                                        console.log('📊 Fonction de création manuelle trouvée, initialisation...');
+                                        window.forceInitAgentCharts();
+                                    } else {
+                                        console.log('❌ Impossible de trouver les fonctions de graphiques');
+                                    }
+                                }, 500);
+                            }
+                        }, 1000);
                     }, { once: true });
                     } else {
                         console.error('Modal content element not found');
@@ -468,173 +492,76 @@ $formations_urgentes = count(array_filter($formations_a_renouveler, function($f)
             if (sectionId === 'rapports') {
                 console.log('🎯 Section rapports activée, tentative d\'initialisation des graphiques...');
                 
-                // Essayer plusieurs méthodes d'initialisation
+                // Attendre que les graphiques spécifiques à l'agent soient chargés
                 setTimeout(() => {
+                    // Essayer plusieurs méthodes d'initialisation
+                    let graphicsInitialized = false;
+                    
                     if (typeof initChartsWhenReady === 'function') {
-                        console.log('📊 Méthode 1: initChartsWhenReady');
+                        console.log('📊 Méthode 1: initChartsWhenReady (données spécifiques agent)');
                         initChartsWhenReady();
+                        graphicsInitialized = true;
                     } else if (typeof initAgentCharts === 'function') {
-                        console.log('📊 Méthode 2: initAgentCharts');
+                        console.log('📊 Méthode 2: initAgentCharts (données spécifiques agent)');
                         initAgentCharts();
+                        graphicsInitialized = true;
                     } else if (typeof forceInitCharts === 'function') {
-                        console.log('📊 Méthode 3: forceInitCharts');
+                        console.log('📊 Méthode 3: forceInitCharts (données spécifiques agent)');
                         forceInitCharts();
-                    } else {
-                        console.error('❌ Aucune fonction de graphiques trouvée');
-                        // Essayer de créer les graphiques directement
-                        setTimeout(createChartsDirectly, 200);
+                        graphicsInitialized = true;
+                    } else if (window.initChartsWhenReady) {
+                        console.log('📊 Méthode 4: window.initChartsWhenReady');
+                        window.initChartsWhenReady();
+                        graphicsInitialized = true;
+                    } else if (window.initAgentCharts) {
+                        console.log('📊 Méthode 5: window.initAgentCharts');
+                        window.initAgentCharts();
+                        graphicsInitialized = true;
                     }
-                }, 300);
+                    
+                    if (!graphicsInitialized) {
+                        console.log('⚠️ Aucune fonction de graphiques trouvée, tentative de création manuelle...');
+                        
+                        // Utiliser la fonction de création manuelle si disponible
+                        if (typeof window.forceInitAgentCharts === 'function') {
+                            console.log('🔧 Utilisation de la fonction de création manuelle');
+                            const success = window.forceInitAgentCharts();
+                            if (success) {
+                                console.log('✅ Graphiques créés avec succès via création manuelle');
+                                graphicsInitialized = true;
+                            }
+                        } else {
+                            // Essayer de trouver les éléments canvas et vérifier s'ils existent
+                            const canvas1 = document.getElementById('agentFormationsChart');
+                            const canvas2 = document.getElementById('agentTypesChart');
+                            
+                            if (canvas1 && canvas2) {
+                                console.log('📊 Canvas trouvés, mais pas de fonctions d\'initialisation');
+                                console.log('🔄 Tentative de rechargement du contenu agent...');
+                                
+                                // Essayer de recharger le contenu de l'agent
+                                const agentModal = document.getElementById('agentModal');
+                                if (agentModal && agentModal.style.display !== 'none') {
+                                    // La modal est ouverte, essayer de déclencher l'événement
+                                    window.dispatchEvent(new CustomEvent('agentContentLoaded'));
+                                }
+                            } else {
+                                console.log('❌ Canvas non trouvés - le contenu agent n\'est peut-être pas encore chargé');
+                            }
+                        }
+                    }
+                }, 800); // Augmenter encore le délai
             }
         }
         
-        // Fonction de secours pour créer les graphiques directement
+        // Fonction de secours pour créer les graphiques directement - DÉSACTIVÉE
+        // Cette fonction était responsable d'afficher les mêmes valeurs pour tous les agents
         function createChartsDirectly() {
-            console.log('🔧 Création directe des graphiques...');
+            console.log('🔧 Fonction de secours désactivée - les graphiques doivent être créés par get_agent_details.php');
+            console.log('⚠️ Si vous voyez ce message, cela signifie que les graphiques spécifiques à l\'agent n\'ont pas pu être chargés');
             
-            if (typeof Chart === 'undefined') {
-                console.error('❌ Chart.js non disponible');
-                return;
-            }
-            
-            const ctx1 = document.getElementById('agentFormationsChart');
-            const ctx2 = document.getElementById('agentTypesChart');
-            const tableBody = document.getElementById('agentRealizationTable');
-            
-            console.log('Éléments trouvés - Canvas:', !!ctx1, !!ctx2, 'Tableau:', !!tableBody);
-            
-            if (ctx1) {
-                try {
-                    new Chart(ctx1, {
-                        type: 'doughnut',
-                        data: {
-                            labels: ['Effectuées', 'Non Effectuées', 'À Renouveler', 'Planifiées'],
-                            datasets: [{
-                                data: [5, 3, 2, 1],
-                                backgroundColor: ['#198754', '#dc3545', '#ffc107', '#0dcaf0'],
-                                borderWidth: 2,
-                                borderColor: '#fff'
-                            }]
-                        },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            plugins: {
-                                legend: { position: 'bottom' }
-                            }
-                        }
-                    });
-                    console.log('✅ Graphique formations créé directement');
-                } catch (error) {
-                    console.error('❌ Erreur graphique formations:', error);
-                }
-            }
-            
-            if (ctx2) {
-                try {
-                    new Chart(ctx2, {
-                        type: 'bar',
-                        data: {
-                            labels: ['Familiarisation', 'Formation Initiale', 'Cours d\'Emploi', 'Technique'],
-                            datasets: [
-                                {
-                                    label: 'Effectuées',
-                                    data: [2, 1, 0, 2],
-                                    backgroundColor: '#198754'
-                                },
-                                {
-                                    label: 'Non Effectuées',
-                                    data: [0, 24, 12, 19],
-                                    backgroundColor: '#dc3545'
-                                }
-                            ]
-                        },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            plugins: {
-                                legend: {
-                                    display: true,
-                                    position: 'bottom'
-                                }
-                            },
-                            scales: {
-                                y: { beginAtZero: true, ticks: { stepSize: 1 } }
-                            }
-                        }
-                    });
-                    console.log('✅ Graphique types créé directement');
-                } catch (error) {
-                    console.error('❌ Erreur graphique types:', error);
-                }
-            }
-            
-            if (tableBody) {
-                try {
-                    const tableHTML = `
-                        <tr>
-                            <td style="font-size: 10px;"><strong>Familiarisation</strong></td>
-                            <td class="text-center">
-                                <span class="badge bg-success" style="font-size: 9px;">2</span>
-                            </td>
-                            <td class="text-center">
-                                <span class="badge bg-danger" style="font-size: 9px;">0</span>
-                            </td>
-                            <td style="width: 100px;">
-                                <div class="progress" style="height: 15px; font-size: 9px;">
-                                    <div class="progress-bar bg-success" style="width: 100%">100%</div>
-                                </div>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td style="font-size: 10px;"><strong>F. Initiale</strong></td>
-                            <td class="text-center">
-                                <span class="badge bg-success" style="font-size: 9px;">1</span>
-                            </td>
-                            <td class="text-center">
-                                <span class="badge bg-danger" style="font-size: 9px;">24</span>
-                            </td>
-                            <td style="width: 100px;">
-                                <div class="progress" style="height: 15px; font-size: 9px;">
-                                    <div class="progress-bar bg-success" style="width: 4%">4%</div>
-                                </div>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td style="font-size: 10px;"><strong>C. Emploi</strong></td>
-                            <td class="text-center">
-                                <span class="badge bg-success" style="font-size: 9px;">0</span>
-                            </td>
-                            <td class="text-center">
-                                <span class="badge bg-danger" style="font-size: 9px;">12</span>
-                            </td>
-                            <td style="width: 100px;">
-                                <div class="progress" style="height: 15px; font-size: 9px;">
-                                    <div class="progress-bar bg-success" style="width: 0%">0%</div>
-                                </div>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td style="font-size: 10px;"><strong>F. Technique</strong></td>
-                            <td class="text-center">
-                                <span class="badge bg-success" style="font-size: 9px;">2</span>
-                            </td>
-                            <td class="text-center">
-                                <span class="badge bg-danger" style="font-size: 9px;">19</span>
-                            </td>
-                            <td style="width: 100px;">
-                                <div class="progress" style="height: 15px; font-size: 9px;">
-                                    <div class="progress-bar bg-success" style="width: 9.5%">9.5%</div>
-                                </div>
-                            </td>
-                        </tr>
-                    `;
-                    tableBody.innerHTML = tableHTML;
-                    console.log('✅ Tableau détail par type créé directement');
-                } catch (error) {
-                    console.error('❌ Erreur tableau détail par type:', error);
-                }
-            }
+            // Ne plus créer de graphiques avec des données statiques
+            // Les vrais graphiques sont créés dans get_agent_details.php avec les données spécifiques à l'agent
         }
 
         // Global function for planning section navigation

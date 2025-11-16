@@ -1,7 +1,7 @@
 <?php
 // Générateur de documents Word et PDF pour les rapports de formations
 
-function generateWordDocument($agent_data, $formations_effectuees, $formations_planifiees, $formations_non_effectuees) {
+function generateWordDocument($agent_data, $formations_effectuees, $formations_planifiees, $formations_non_effectuees, $formations_a_mettre_a_jour = []) {
     $filename = 'rapport_formations_' . $agent_data['matricule'] . '_' . date('Y-m-d') . '.doc';
     
     header('Content-Type: application/msword');
@@ -139,7 +139,7 @@ function generateWordDocument($agent_data, $formations_effectuees, $formations_p
     </html>';
 }
 
-function generatePDFDocument($agent_data, $formations_effectuees, $formations_planifiees, $formations_non_effectuees) {
+function generatePDFDocument($agent_data, $formations_effectuees, $formations_planifiees, $formations_non_effectuees, $formations_a_mettre_a_jour = []) {
     $filename = 'rapport_formations_' . $agent_data['matricule'] . '_' . date('Y-m-d') . '.pdf';
     
     // Générer un document HTML qui sera traité comme PDF par le navigateur

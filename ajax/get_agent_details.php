@@ -45,7 +45,33 @@ $stmt_formations = $pdo->prepare("
     ORDER BY date_fin DESC
 ");
 $stmt_formations->execute([$_GET['id'], $_GET['id']]);
-$formations_effectuees = $stmt_formations->fetchAll();
+$formations_effectuees_raw = $stmt_formations->fetchAll();
+
+// Éliminer les doublons basés sur formation_id (garder la plus récente)
+$formations_effectuees = [];
+$formations_vues = [];
+
+foreach ($formations_effectuees_raw as $formation) {
+    $formation_id = $formation['formation_id'];
+    
+    if (!isset($formations_vues[$formation_id])) {
+        $formations_effectuees[] = $formation;
+        $formations_vues[$formation_id] = true;
+    } else {
+        // Si on a déjà cette formation, garder la plus récente
+        $index_existant = -1;
+        foreach ($formations_effectuees as $i => $existing) {
+            if ($existing['formation_id'] == $formation_id) {
+                $index_existant = $i;
+                break;
+            }
+        }
+        
+        if ($index_existant >= 0 && strtotime($formation['date_fin']) > strtotime($formations_effectuees[$index_existant]['date_fin'])) {
+            $formations_effectuees[$index_existant] = $formation;
+        }
+    }
+}
 
 // Récupérer les formations planifiées - VERSION AMÉLIORÉE
 $stmt_pf = $pdo->prepare("SELECT pf.*, f.code, f.intitule, f.categorie, f.periodicite_mois FROM planning_formations pf JOIN formations f ON pf.formation_id = f.id WHERE pf.agent_id = ? AND pf.statut IN ('planifie', 'confirme') ORDER BY pf.date_prevue_debut ASC");
@@ -2041,6 +2067,26 @@ function initAgentCharts() {
     // Données par type de formation pour cet agent (effectuées et non effectuées)
     const typesData = {
         <?php
+        // Fonction pour mapper les catégories de la base de données vers les codes
+        function mapCategorieToCode($categorie, $code) {
+            // Priorité au code si disponible (plus précis)
+            if (!empty($code)) {
+                if (strpos($code, 'SUR-FAM') !== false) return 'FAMILIARISATION';
+                if (strpos($code, 'SUR-INI') !== false) return 'FORMATION_INITIALE';
+                if (strpos($code, 'SUR-FCE') !== false) return 'FORMATION_COURS_EMPLOI';
+                if (strpos($code, 'SUR-FTS') !== false) return 'FORMATION_TECHNIQUE';
+            }
+            
+            // Fallback sur la catégorie de la base de données
+            switch ($categorie) {
+                case 'FAMILIARISATION': return 'FAMILIARISATION';
+                case 'FORMATION_INITIALE': return 'FORMATION_INITIALE';
+                case 'FORMATION_COURS_EMPLOI': return 'FORMATION_COURS_EMPLOI';
+                case 'FORMATION_TECHNIQUE': return 'FORMATION_TECHNIQUE';
+                default: return 'AUTRE';
+            }
+        }
+        
         // Compter les formations effectuées par type
         $types_effectuees = [
             'FAMILIARISATION' => 0,
@@ -2049,15 +2095,21 @@ function initAgentCharts() {
             'FORMATION_TECHNIQUE' => 0
         ];
         
+        // Éviter les doublons en gardant trace des formations déjà comptées
+        $formations_comptees = [];
+        
         foreach ($formations_effectuees as $formation) {
-            if (strpos($formation['code'], 'SUR-FAM') !== false) {
-                $types_effectuees['FAMILIARISATION']++;
-            } elseif (strpos($formation['code'], 'SUR-INI') !== false) {
-                $types_effectuees['FORMATION_INITIALE']++;
-            } elseif (strpos($formation['code'], 'SUR-FCE') !== false) {
-                $types_effectuees['FORMATION_COURS_EMPLOI']++;
-            } elseif (strpos($formation['code'], 'SUR-FTS') !== false) {
-                $types_effectuees['FORMATION_TECHNIQUE']++;
+            $formation_id = $formation['formation_id'];
+            
+            // Éviter les doublons entre formations_effectuees et formations_agents
+            if (isset($formations_comptees[$formation_id])) {
+                continue;
+            }
+            $formations_comptees[$formation_id] = true;
+            
+            $type = mapCategorieToCode($formation['categorie'], $formation['code']);
+            if (isset($types_effectuees[$type])) {
+                $types_effectuees[$type]++;
             }
         }
         
@@ -2070,14 +2122,9 @@ function initAgentCharts() {
         ];
         
         foreach ($formations_non_effectuees as $formation) {
-            if (strpos($formation['code'], 'SUR-FAM') !== false) {
-                $types_non_effectuees['FAMILIARISATION']++;
-            } elseif (strpos($formation['code'], 'SUR-INI') !== false) {
-                $types_non_effectuees['FORMATION_INITIALE']++;
-            } elseif (strpos($formation['code'], 'SUR-FCE') !== false) {
-                $types_non_effectuees['FORMATION_COURS_EMPLOI']++;
-            } elseif (strpos($formation['code'], 'SUR-FTS') !== false) {
-                $types_non_effectuees['FORMATION_TECHNIQUE']++;
+            $type = mapCategorieToCode($formation['categorie'], $formation['code']);
+            if (isset($types_non_effectuees[$type])) {
+                $types_non_effectuees[$type]++;
             }
         }
         ?>
@@ -2094,6 +2141,8 @@ function initAgentCharts() {
             technique: <?= $types_non_effectuees['FORMATION_TECHNIQUE'] ?>
         }
     };
+    
+    console.log('📊 Données types détaillées:', typesData);
 
     // Couleurs pour les graphiques
     const colors = {
@@ -2130,7 +2179,27 @@ function initAgentCharts() {
                         position: 'bottom',
                         labels: {
                             padding: 15,
-                            usePointStyle: true
+                            usePointStyle: true,
+                            generateLabels: function(chart) {
+                                const data = chart.data;
+                                if (data.labels.length && data.datasets.length) {
+                                    return data.labels.map((label, i) => {
+                                        const value = data.datasets[0].data[i];
+                                        const total = data.datasets[0].data.reduce((a, b) => a + b, 0);
+                                        const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                        return {
+                                            text: `${label}: ${value} (${percentage}%)`,
+                                            fillStyle: data.datasets[0].backgroundColor[i],
+                                            strokeStyle: data.datasets[0].borderColor,
+                                            lineWidth: data.datasets[0].borderWidth,
+                                            hidden: false,
+                                            index: i,
+                                            pointStyle: 'circle'
+                                        };
+                                    });
+                                }
+                                return [];
+                            }
                         }
                     },
                     tooltip: {
@@ -2208,7 +2277,23 @@ function initAgentCharts() {
                                     return 'Type: ' + context[0].label;
                                 },
                                 label: function(context) {
-                                    return context.dataset.label + ': ' + context.parsed.y;
+                                    const label = context.dataset.label || '';
+                                    const value = context.parsed.y;
+                                    return `${label}: ${value} formations`;
+                                },
+                                afterLabel: function(context) {
+                                    // Calculer le pourcentage pour ce type de formation
+                                    const dataIndex = context.dataIndex;
+                                    const chart = context.chart;
+                                    const effectuees = chart.data.datasets[0].data[dataIndex];
+                                    const nonEffectuees = chart.data.datasets[1].data[dataIndex];
+                                    const total = effectuees + nonEffectuees;
+                                    
+                                    if (total > 0) {
+                                        const percentage = ((context.parsed.y / total) * 100).toFixed(1);
+                                        return `${percentage}% du total (${total})`;
+                                    }
+                                    return '';
                                 }
                             }
                         }
@@ -2231,7 +2316,27 @@ function initAgentCharts() {
                             }
                         }
                     }
-                }
+                },
+                plugins: [{
+                    id: 'barValues',
+                    afterDatasetsDraw: function(chart) {
+                        const ctx = chart.ctx;
+                        ctx.font = '10px Arial';
+                        ctx.fillStyle = '#000';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'bottom';
+
+                        chart.data.datasets.forEach((dataset, datasetIndex) => {
+                            const meta = chart.getDatasetMeta(datasetIndex);
+                            meta.data.forEach((bar, index) => {
+                                const value = dataset.data[index];
+                                if (value > 0) {
+                                    ctx.fillText(value, bar.x, bar.y - 5);
+                                }
+                            });
+                        });
+                    }
+                }]
             });
             console.log('✅ Graphique types créé avec succès');
         } catch (error) {
@@ -2366,6 +2471,12 @@ window.addEventListener('agentContentLoaded', function() {
     console.log('👤 Contenu agent chargé, initialisation des graphiques...');
     setTimeout(initChartsWhenReady, 1000);
 });
+
+// Initialisation immédiate si le DOM est déjà prêt
+if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    console.log('📄 DOM déjà prêt, initialisation immédiate des graphiques');
+    setTimeout(initChartsWhenReady, 500);
+}
 
 // Réinitialiser les graphiques quand on change de section
 if (typeof showAgentSection === 'function') {
